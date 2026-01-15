@@ -132,6 +132,10 @@ def enrich_disp_data(df_disp_semdupl, df_cadastro, df_pvha, df_pvha_prim, df_ibg
         df_disp_semdupl.columns = df_disp_semdupl.columns.str.strip()
         df_cadastro.columns = df_cadastro.columns.str.strip()
         
+        print("--- DEBUG MERGE CADASTRO ---")
+        print(f"Colunas Dispensa (início): {list(df_disp_semdupl.columns)}")
+        print(f"Colunas Cadastro (início): {list(df_cadastro.columns)}")
+        
         # Identificar chave de merge
         if 'codigo_pac_eleito' in df_disp_semdupl.columns and 'codigo_pac_eleito' in df_cadastro.columns:
             merge_key = 'codigo_pac_eleito'
@@ -139,8 +143,6 @@ def enrich_disp_data(df_disp_semdupl, df_cadastro, df_pvha, df_pvha_prim, df_ibg
             merge_key = 'codigo_paciente'
         else:
             print("AVISO: Chave de merge (codigo_pac_eleito ou codigo_paciente) não encontrada em ambas as bases.")
-            print(f"Colunas Dispensa: {list(df_disp_semdupl.columns)}")
-            print(f"Colunas Cadastro: {list(df_cadastro.columns)}")
             merge_key = None
 
         if merge_key:
@@ -156,11 +158,7 @@ def enrich_disp_data(df_disp_semdupl, df_cadastro, df_pvha, df_pvha_prim, df_ibg
             
             # Filtrar apenas as que existem no cadastro
             cols_to_merge = [c for c in cols_demograficas if c in df_cadastro.columns]
-            
-            # Debug: Avisar se faltar algo importante
-            missing_cols = set(['st_orgao_genital', 'co_genero']) - set(cols_to_merge)
-            if missing_cols:
-                print(f"AVISO: Colunas demográficas faltando no Cadastro antes do merge: {missing_cols}")
+            print(f"Colunas selecionadas para merge do Cadastro: {cols_to_merge}")
 
             # Merge
             df_disp_semdupl = df_disp_semdupl.merge(
@@ -171,6 +169,8 @@ def enrich_disp_data(df_disp_semdupl, df_cadastro, df_pvha, df_pvha_prim, df_ibg
             
             if 'Cod_unificado' in df_disp_semdupl.columns:
                 df_disp_semdupl['Cod_unificado'] = df_disp_semdupl['Cod_unificado'].astype('Int64')
+            
+            print(f"Colunas Dispensa (pós-merge): {list(df_disp_semdupl.columns)}")
             
             # Calcular grupos populacionais APÓS o merge
             df_disp_semdupl = calculate_population_groups(df_disp_semdupl)
