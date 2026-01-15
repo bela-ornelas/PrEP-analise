@@ -66,8 +66,7 @@ def classify_prep_users(df_disp_semdupl, data_fechamento):
     # Garantir que dt_disp é datetime
     df_disp_semdupl['dt_disp'] = pd.to_datetime(df_disp_semdupl['dt_disp'])
     
-    # Calcular valid_until como no notebook
-    # Disp_semdupl['valid_until'] = Disp_semdupl['dt_disp'] + pd.to_timedelta(Disp_semdupl['duracao_sum'] * 1.4, unit='D')
+    # Calcular valid_until
     if 'duracao_sum' not in df_disp_semdupl.columns:
          if 'duracao' in df_disp_semdupl.columns:
              df_disp_semdupl['duracao_sum'] = df_disp_semdupl['duracao']
@@ -76,52 +75,25 @@ def classify_prep_users(df_disp_semdupl, data_fechamento):
              
     df_disp_semdupl['valid_until'] = df_disp_semdupl['dt_disp'] + pd.to_timedelta(df_disp_semdupl['duracao_sum'] * 1.4, unit='D')
     
-    # Lógica iterativa simplificada para o mês atual (data de fechamento)
-    # No notebook: loop for year/month... if year==ano and month==mes...
-    
     start_date_12m = hoje_dt - pd.DateOffset(years=1)
     
-    # 1. Disp_Ultimos_12m (Teve dispensa nos ultimos 12 meses)
-    # Filter: dt_disp > start_date_12m AND dt_disp <= hoje_dt
-    # No notebook: "past_year_dispensations"
+    # Identificar a última dispensa de cada paciente para classificação
+    df_latest = df_disp_semdupl.sort_values(by="dt_disp", ascending=False).drop_duplicates(['codigo_pac_eleito'], keep='first').copy()
     
-    past_year_disp = df_disp_semdupl[
-        (df_disp_semdupl['dt_disp'] > start_date_12m) & 
-        (df_disp_semdupl['dt_disp'] <= hoje_dt)
-    ].copy()
+    # Flags no dataframe original (última dispensa)
+    df_latest['Disp_Ultimos_12m'] = ((df_latest['dt_disp'] > start_date_12m) & (df_latest['dt_disp'] <= hoje_dt)).astype(int)
+    df_latest['EmPrEP_Atual'] = ((df_latest['Disp_Ultimos_12m'] == 1) & (df_latest['valid_until'] >= hoje_dt)).astype(int)
     
-    # Deduplicar por paciente (o notebook faz drop_duplicates(['codigo_pac_eleito'], keep="first") após ordenar por data desc)
-    past_year_disp = past_year_disp.sort_values(by="dt_disp", ascending=False)
-    users_with_disp_12m = past_year_disp['codigo_pac_eleito'].unique() # List of users
-    
-    count_12m = len(users_with_disp_12m)
-    
-    # 2. EmPrEP_Atual
-    # Notebook: valid_dispensations = past_year_dispensations[past_year_dispensations['valid_until'] >= end_date]
-    # Aqui end_date é a data de fechamento (hoje_dt)
-    
-    # Importante: O notebook aplica o filtro de validade SOBRE o dataframe já filtrado dos últimos 12 meses e deduplicado (maior data)
-    # Ou seja, pega a ÚLTIMA dispensa de cada paciente nos ultimos 12m e vê se ela cobre a data atual.
-    
-    # Vamos pegar 'past_year_disp' (que contém todas as dispensas do ano)
-    # E deduplicar mantendo a mais recente para cada paciente
-    past_year_disp_deduplicated = past_year_disp.drop_duplicates(['codigo_pac_eleito'], keep='first')
-    
-    valid_dispensations = past_year_disp_deduplicated[
-        past_year_disp_deduplicated['valid_until'] >= hoje_dt
-    ]
-    
-    count_emprep = valid_dispensations['codigo_pac_eleito'].nunique()
-    
-    # Gerar arquivo TXT com labels exatos pedidos
-    # "Teve dispensação nos últimos 12 meses"
-    # "Não teve dispensação nos últimos 12 meses" -> Total de pacientes únicos na base inteira - count_12m?
-    # O notebook faz um merge left com a base total para preencher "Não teve..."
+    # Merge de volta para o dataframe principal se necessário (ou apenas retornar as contagens)
+    count_12m = df_latest['Disp_Ultimos_12m'].sum()
+    count_emprep = df_latest['EmPrEP_Atual'].sum()
     
     total_pacientes_unicos = df_disp_semdupl['codigo_pac_eleito'].nunique()
     count_nao_12m = total_pacientes_unicos - count_12m
-    
     count_descontinuados = count_12m - count_emprep
+    
+    # IMPORTANTE: Guardar o status no dataframe para uso em outras funções
+    df_disp_semdupl['is_EmPrEP_Atual'] = df_disp_semdupl['codigo_pac_eleito'].isin(df_latest[df_latest['EmPrEP_Atual'] == 1]['codigo_pac_eleito'])
     
     return {
         "Disp_Ultimos_12m": count_12m,
@@ -129,6 +101,40 @@ def classify_prep_users(df_disp_semdupl, data_fechamento):
         "EmPrEP_Atual": count_emprep,
         "Descontinuados": count_descontinuados
     }
+
+def generate_population_metrics(df_disp_semdupl):
+    """
+    Gera tabela de populações (aba Populações (em PrEP))
+    Filtra apenas quem está em PrEP atualmente.
+    """
+    print("Gerando métricas de Populações (apenas Em PrEP atualmente)...")
+    
+    # Filtro PrEP_current conforme solicitado
+    if 'is_EmPrEP_Atual' not in df_disp_semdupl.columns:
+        return pd.DataFrame()
+        
+    df_current = df_disp_semdupl[df_disp_semdupl['is_EmPrEP_Atual'] == True].copy()
+    
+    if df_current.empty:
+        return pd.DataFrame()
+        
+    # Deduplicar por paciente para contar pessoas, não dispensas
+    df_current_users = df_current.drop_duplicates(subset=['codigo_pac_eleito'])
+    
+    # Frequência de Pop_genero_pratica
+    pop_counts = df_current_users['Pop_genero_pratica'].value_counts()
+    pop_perc = (df_current_users['Pop_genero_pratica'].value_counts(normalize=True) * 100).round(2)
+    
+    pop_tab = pd.DataFrame({
+        'Pop_genero_pratica': pop_counts.index,
+        'Freq_Val': pop_counts.values,
+        'Freq_Rel': pop_perc.values
+    })
+    
+    # Ordenar conforme o notebook (decrescente por valor)
+    pop_tab = pop_tab.sort_values(by='Freq_Val', ascending=False)
+    
+    return pop_tab
 
 def generate_prep_history(df_disp_semdupl, data_fechamento):
     """
