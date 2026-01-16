@@ -4,10 +4,7 @@ import pandas as pd
 import datetime
 from .config import MONTHS_ORDER
 from .data_loader import carregar_bases
-from .cleaning import clean_disp_df
-from .preprocessing import enrich_disp_data, calculate_intervals, flag_first_last_disp
-from .data_loader import carregar_bases
-from .cleaning import clean_disp_df
+from .cleaning import clean_disp_df, process_cadastro
 from .preprocessing import enrich_disp_data, calculate_intervals, flag_first_last_disp
 from .analysis import generate_disp_metrics, generate_new_users_metrics, generate_prep_history, classify_prep_users, generate_population_metrics, classify_udm_active
 from .excel_generator import export_to_excel
@@ -43,6 +40,9 @@ def main():
         print("Erro: Base de dispensas vazia ou não encontrada.")
         return
 
+    # Processar Cadastro (Normalizar datas e deduplicar)
+    df_cad_prep = process_cadastro(df_cad_prep)
+
     # 2. Limpeza (Conforme orientações estritas)
     df_disp, df_disp_semdupl = clean_disp_df(df_disp, args.data_fechamento)
     
@@ -65,7 +65,8 @@ def main():
     # CONFERÊNCIA DE VALORES (Prints solicitados)
     # -------------------------------------------------------------------------
     print("\n--- Conferência EmPrEP_Atual ---")
-    print(df_disp_semdupl.drop_duplicates("codigo_pac_eleito")["EmPrEP_Atual"].value_counts())
+    if "EmPrEP_Atual" in df_disp_semdupl.columns:
+        print(df_disp_semdupl.drop_duplicates("codigo_pac_eleito")["EmPrEP_Atual"].value_counts())
     print()
 
     data_dt = pd.to_datetime(args.data_fechamento)
@@ -90,8 +91,19 @@ def main():
     print("\n--- Resultados Processados ---")
     print(f"Em PrEP atualmente: {classificacoes['EmPrEP_Atual']}")
     print("\n--- Histórico Mensal (Últimos 5 registros) ---")
-    print(df_history.tail().to_string(index=False))
+    if not df_history.empty:
+        print(df_history.tail().to_string(index=False))
     
+    print("\n" + "="*50)
+    print("CONFERÊNCIA DE CADASTRO")
+    if 'codigo_pac_eleito' in df_cad_prep.columns:
+        print(f"Número de usuários únicos no Cadastro (pac_eleito): {df_cad_prep['codigo_pac_eleito'].nunique()}")
+    elif 'codigo_paciente' in df_cad_prep.columns:
+        print(f"Número de usuários únicos no Cadastro (paciente): {df_cad_prep['codigo_paciente'].nunique()}")
+    else:
+        print("Coluna de identificação de paciente não encontrada no Cadastro para conferência.")
+    print("="*50 + "\n")
+
     # Exportação
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
@@ -111,6 +123,7 @@ def main():
     new_users_metrics.to_csv(os.path.join(args.output_dir, "Novos_Usuarios_Mes_Ano.csv"), sep=";")
     
     print(f"\nOutputs salvos em: {args.output_dir}")
+    print(f"Conferência Final: Número de usuários únicos no Cadastro: {df_cad_prep['codigo_pac_eleito'].nunique()}")
 
 if __name__ == "__main__":
     main()

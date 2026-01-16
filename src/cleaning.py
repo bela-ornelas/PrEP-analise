@@ -16,10 +16,11 @@ def clean_disp_df(df_disp, data_fechamento):
     # 2) Crie a coluna "dt_disp" como a versão normalizada (sem hora) de "data_dispensa".
     df_disp["dt_disp"] = df_disp["data_dispensa"].dt.normalize()
     
-    # GARANTIA: Calcular ano_disp a partir da data normalizada para evitar inconsistências do arquivo original
-    df_disp['ano_disp'] = df_disp['dt_disp'].dt.year
+    # Garantir ano_disp para o filtro (usando a coluna do banco ou extraindo da data)
+    if 'ano_disp' not in df_disp.columns:
+        df_disp['ano_disp'] = df_disp['dt_disp'].dt.year
     
-    # Filtro: datas em ou antes da 'data_fechamento' e ano >= 2018
+    # Filtro
     hoje2_dt = pd.to_datetime(data_fechamento).normalize()
     df_disp = df_disp[(df_disp['dt_disp'] <= hoje2_dt) & (df_disp['ano_disp'] >= 2018)]
 
@@ -34,9 +35,38 @@ def clean_disp_df(df_disp, data_fechamento):
     # retira duplicidade de data da dispensa e cria novo banco "Disp_semdupl".
     df_disp_semdupl = df_disp.drop_duplicates(subset=['codigo_pac_eleito', 'dt_disp']).copy()
     
-    # Criar mes_disp (Jan, Fev...) para a tabela de output
+    # Adicionar mes_disp para o relatório final
     month_map = {1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun',
                  7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'}
     df_disp_semdupl['mes_disp'] = df_disp_semdupl['dt_disp'].dt.month.map(month_map)
     
     return df_disp, df_disp_semdupl
+
+def process_cadastro(df_cad):
+    """
+    Limpa e normaliza o dataframe de Cadastro PrEP.
+    - Normaliza datas (nascimento, cadastro, atualização)
+    - Remove duplicatas por codigo_pac_eleito
+    """
+    if df_cad.empty:
+        return df_cad
+
+    print("Iniciando processamento do Cadastro...")
+    
+    # Lista de colunas de data para normalizar
+    # Verifica nomes comuns e variações
+    date_cols = ['data_nascimento', 'dt_nasc', 'data_cadastro', 'dt_cadas', 'data_ult_atu', 'dt_ult_atu']
+    
+    for col in date_cols:
+        if col in df_cad.columns:
+            df_cad[col] = pd.to_datetime(df_cad[col], errors='coerce').dt.normalize()
+    
+    # Remover duplicatas mantendo a primeira ocorrência
+    if 'codigo_pac_eleito' in df_cad.columns:
+        df_cad.drop_duplicates("codigo_pac_eleito", keep="first", inplace=True)
+        print(f"Cadastro deduplicado (codigo_pac_eleito). Total: {len(df_cad)}")
+    elif 'codigo_paciente' in df_cad.columns:
+        df_cad.drop_duplicates("codigo_paciente", keep="first", inplace=True)
+        print(f"Cadastro deduplicado (codigo_paciente). Total: {len(df_cad)}")
+        
+    return df_cad

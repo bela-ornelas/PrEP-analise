@@ -4,22 +4,70 @@ from .config import UF_MAP, REGIAO_MAP
 
 def calculate_population_groups(df):
     """
-    Calcula grupos populacionais (HSH, Travesti, MulherTrans, etc.) baseado nas colunas do Cadastro.
-    As colunas DEVEM existir no dataframe vindo do merge com o Cadastro.
+    Calcula grupos populacionais (HSH, Travesti, etc.) e categorias sociodemográficas (Raça, Escolaridade).
+    Baseado nas colunas do Cadastro.
     """
-    # Verificar se as colunas essenciais estão presentes
-    required_cols = ['st_orgao_genital', 'tp_sexo_atrib_nasc', 'co_genero', 'co_orientacao_sexual']
-    missing_cols = [col for col in required_cols if col not in df.columns]
+    # 1. Padronização de Colunas (Race/Cor)
+    if 'raca' not in df.columns and 'raca_cor' in df.columns:
+        df['raca'] = df['raca_cor']
     
-    if missing_cols:
-        print(f"ERRO CRÍTICO: As seguintes colunas demográficas não foram encontradas no DataFrame: {missing_cols}")
-        print("Colunas disponíveis:", list(df.columns))
-
-    # Normalizar strings para evitar erros de case/espaço
-    for col in required_cols:
+    # Colunas esperadas
+    cols_text = ['st_orgao_genital', 'tp_sexo_atrib_nasc', 'co_genero', 'co_orientacao_sexual', 'raca', 'escolaridade']
+    
+    # Normalizar strings (Strip)
+    for col in cols_text:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
+        else:
+            # Cria coluna vazia se não existir para não quebrar o np.select (embora deva existir pelo merge)
+            df[col] = "Não Informado"
 
+    # -------------------------------------------------------------------------
+    # RAÇA (4 Categorias)
+    # -------------------------------------------------------------------------
+    cond_raca = [
+        (df['raca'] == "Branca") | (df['raca'] == "Amarela"),
+        (df['raca'] == "Preta"),
+        (df['raca'] == "Parda"),
+        (df['raca'] == "Indígena")
+    ]
+    escolhas_raca = [1, 2, 3, 4]
+    df["raca4_cat"] = np.select(cond_raca, escolhas_raca, default=np.nan)
+
+    category_raca = {
+        1: 'Branca/Amarela',
+        2: 'Preta',
+        3: 'Parda',
+        4: 'Indígena',
+        np.nan: 'Ignorada/Não informada'
+    }
+    df['raca4_cat'] = df['raca4_cat'].map(category_raca)
+
+    # -------------------------------------------------------------------------
+    # ESCOLARIDADE (4 Categorias)
+    # -------------------------------------------------------------------------
+    cond_escol = [
+        (df['escolaridade'] == "Nenhuma/Sem educação formal") | (df['escolaridade'] == "De 1 a 3 anos"),
+        (df['escolaridade'] == "De 4 a 7 anos"),
+        (df['escolaridade'] == "De 8 a 11 anos"),
+        (df['escolaridade'] == "De 12 e mais anos")
+    ]
+    escolhas_escol = [1, 2, 3, 4]
+    df["escol4"] = np.select(cond_escol, escolhas_escol, default=np.nan)
+
+    category_mapping_escol = {
+        1: "Sem educação formal a 3 anos",
+        2: "De 4 a 7 anos",
+        3: "De 8 a 11 anos",
+        4: "12 ou mais anos",
+        np.nan: 'Ignorada/Não informada'
+    }
+    df['escol4'] = df['escol4'].map(category_mapping_escol)
+
+    # -------------------------------------------------------------------------
+    # POPULAÇÕES (Lógica User)
+    # -------------------------------------------------------------------------
+    
     # HSH
     cond_hsh = [
         (((df['st_orgao_genital'] == "Pênis") | (df['st_orgao_genital'] == "Vagina e Pênis")) |
@@ -32,7 +80,7 @@ def calculate_population_groups(df):
     # Travesti
     cond_travesti = [
         ((df['st_orgao_genital'] == "Pênis") | (df['st_orgao_genital'] == "Vagina e Pênis")) & (df['co_genero'] == "Travesti"),
-        (df['st_orgao_genital'] == "Vagina") & (df['co_genero'] == "Travesti "),
+        (df['st_orgao_genital'] == "Vagina") & (df['co_genero'] == "Travesti"), # Strip já removeu espaço
         ((df['tp_sexo_atrib_nasc'] == "Masculino") | (df['tp_sexo_atrib_nasc'] == "Intersexo")) & (df['co_genero'] == "Travesti"),
         (df['co_genero'] == "Travesti")
     ]
@@ -75,7 +123,7 @@ def calculate_population_groups(df):
     cond_nao_binarie = [(df['co_genero'] == "Não binário")]
     df["Pop_NaoBinarie"] = np.select(cond_nao_binarie, [1], default=0)
 
-    # Pop_genero_pratica
+    # Pop Genero Pratica
     df['Pop_genero_pratica'] = 0
     df.loc[df['Pop_HSH'] == 1, 'Pop_genero_pratica'] = 1
     df.loc[df['Pop_Travesti'] == 1, 'Pop_genero_pratica'] = 2
