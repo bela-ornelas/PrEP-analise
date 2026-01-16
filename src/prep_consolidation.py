@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from datetime import timedelta
 
 def create_prep_dataframe(df_disp_semdupl, df_cad_prep, df_cad_hiv=pd.DataFrame(), df_pvha=pd.DataFrame(), df_pvha_prim=pd.DataFrame()):
     """
@@ -63,8 +64,6 @@ def create_prep_dataframe(df_disp_semdupl, df_cad_prep, df_cad_hiv=pd.DataFrame(
         print("Merge Adicional 1: Cadastro HIV (Cod_unificado)...")
         cad_hiv_sel = df_cad_hiv[['codigo_paciente', 'Cod_unificado']].drop_duplicates(subset=['codigo_paciente'])
         
-        # Se Cod_unificado já existir (vindo do Dispensa), vamos priorizar o do Cadastro HIV ou manter o que tem?
-        # Normalmente o merge sobrescreve ou cria sufixo. Vamos assumir que queremos preencher/atualizar.
         if 'Cod_unificado' in df_prep.columns:
             df_prep = df_prep.drop(columns=['Cod_unificado']) # Remove para trazer limpo do Cad HIV
             
@@ -85,14 +84,13 @@ def create_prep_dataframe(df_disp_semdupl, df_cad_prep, df_cad_hiv=pd.DataFrame(
         pvha_sel = df_pvha[['Cod_unificado', 'data_obito', 'PVHA']].copy()
         pvha_sel = pvha_sel.drop_duplicates(subset=['Cod_unificado'])
         
-        # Remover colunas se já existirem para evitar duplicidade (x, y)
         cols_to_drop = [c for c in ['data_obito', 'PVHA'] if c in df_prep.columns]
         if cols_to_drop:
             df_prep = df_prep.drop(columns=cols_to_drop)
             
         df_prep = df_prep.merge(pvha_sel, on='Cod_unificado', how='left')
 
-    # 4. Calcular/Garantir Variáveis Derivadas Finais
+    # 4. Calcular Variáveis Derivadas Finais
     if 'dt_disp_min' in df_prep.columns:
         df_prep['ano_pri_disp'] = pd.to_datetime(df_prep['dt_disp_min']).dt.year
         df_prep['mes_pri_disp'] = pd.to_datetime(df_prep['dt_disp_min']).dt.month_name().str[:3]
@@ -100,5 +98,21 @@ def create_prep_dataframe(df_disp_semdupl, df_cad_prep, df_cad_hiv=pd.DataFrame(
     if 'dt_disp_max' in df_prep.columns:
         df_prep['ano_ult_disp'] = pd.to_datetime(df_prep['dt_disp_max']).dt.year
         df_prep['mes_ult_disp'] = pd.to_datetime(df_prep['dt_disp_max']).dt.month_name().str[:3]
+    
+    # 5. Idade e Faixa Etária
+    if 'dt_disp' in df_prep.columns and 'data_nascimento' in df_prep.columns:
+        print("Calculando idade e faixa etária...")
+        df_prep['dt_disp'] = pd.to_datetime(df_prep['dt_disp'], errors='coerce')
+        df_prep['data_nascimento'] = pd.to_datetime(df_prep['data_nascimento'], errors='coerce')
+        
+        # Calcular idade na dispensa (em anos)
+        df_prep['idade_disp'] = (df_prep['dt_disp'] - df_prep['data_nascimento']) / timedelta(days=365)
+        df_prep['idade_disp'] = df_prep['idade_disp'].apply(np.floor).astype('Int64')
+        
+        # Faixas Etárias
+        cut_points = [-np.inf, 17, 24, 29, 39, 49, np.inf]
+        labels = ['<18', '18 a 24', '25 a 29', '30 a 39', '40 a 49', '50 e mais']
+        
+        df_prep['fetar'] = pd.cut(df_prep['idade_disp'], bins=cut_points, labels=labels)
     
     return df_prep
