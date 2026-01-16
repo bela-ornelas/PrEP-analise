@@ -32,7 +32,8 @@ def main():
     bases = carregar_bases(data_fechamento, carregar_disp=True, carregar_cad=True, carregar_pvha=True)
     
     df_disp = bases.get("Disp", pd.DataFrame())
-    df_cad = bases.get("Cadastro_HIV", pd.DataFrame())
+    df_cad_prep = bases.get("Cadastro_PrEP", pd.DataFrame()) # Cadastro PrEP (Demográfico)
+    df_cad_hiv = bases.get("Cadastro_HIV", pd.DataFrame())   # Cadastro HIV (PVHA)
     df_pvha = bases.get("PVHA", pd.DataFrame())
     df_pvha_prim = bases.get("PVHA_Prim", pd.DataFrame())
     
@@ -40,20 +41,16 @@ def main():
         print("Erro: Base de dispensas vazia ou não encontrada.")
         return
 
-    # 2. Limpeza
+    # 2. Limpeza (Conforme orientações estritas)
     df_disp, df_disp_semdupl = clean_disp_df(df_disp, args.data_fechamento)
     
-    # 3. Processamento
-    df_disp_semdupl = enrich_disp_data(df_disp_semdupl, df_cad, df_pvha, df_pvha_prim)
-    df_disp_semdupl = calculate_intervals(df_disp_semdupl)
-    df_disp_semdupl = flag_first_last_disp(df_disp_semdupl)
-    
-    # 4. Análise e Outputs
-    # a) Classificações (12m, EmPrEP) - Necessário primeiro para filtrar populações
-    classificacoes = classify_prep_users(df_disp_semdupl, args.data_fechamento)
-    
-    # b) Dispensas por Mês/Ano
+    # 4. Análise Básica (Apenas Dispensas por Mês/Ano para validação)
     disp_metrics = generate_disp_metrics(df_disp_semdupl)
+    print("\n--- Dispensas por Mês/Ano (Validação) ---")
+    print(disp_metrics)
+    
+    # 3. Processamento (Merge e Populações - ficarão para depois se necessário)
+    # df_disp_semdupl = enrich_disp_data(df_disp_semdupl, df_cad_prep, df_pvha, df_pvha_prim)
     
     # c) Novos Usuários por Mês/Ano
     new_users_metrics = generate_new_users_metrics(df_disp_semdupl)

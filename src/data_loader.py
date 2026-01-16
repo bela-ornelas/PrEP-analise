@@ -84,17 +84,29 @@ def carregar_bases(hoje: datetime.date,
             # Mock para teste se não existir? Não, melhor falhar ou retornar vazio.
             bases["Disp"] = pd.DataFrame() # Retorna vazio para não quebrar fluxo imediato
 
-    # 3. Carregar Cadastro HIV (CSV Geral)
+    # 3. Carregar Cadastro PrEP (Consolidado - para dados demográficos)
     if carregar_cad:
+        nome_arquivo_cad = arquivos_consolidado["Cad_Consolidado"]
+        path_arquivo_cad = os.path.join(path_consolidado, f"{nome_arquivo_cad}.txt")
+        cols_cad = dic_colunas.get(nome_arquivo_cad)
+
+        if os.path.exists(path_arquivo_cad) and cols_cad:
+            print(f"Carregando Cadastro PrEP (Consolidado) de: {path_arquivo_cad}")
+            bases["Cadastro_PrEP"] = pd.read_csv(path_arquivo_cad, sep="\t", names=cols_cad, header=None,
+                                              encoding="latin-1", low_memory=True, on_bad_lines="warn", quoting=3)
+        else:
+            print(f"Alerta: Arquivo de Cadastro PrEP não encontrado no consolidado: {path_arquivo_cad}")
+            bases["Cadastro_PrEP"] = pd.DataFrame()
+
+    # 4. Carregar Cadastro HIV (PVHA - para checagens de HIV/Óbito)
+    if carregar_pvha:
         if os.path.exists(PATH_CADASTRO_HIV):
-            print(f"Carregando Cadastro HIV de: {PATH_CADASTRO_HIV}")
+            print(f"Carregando Cadastro HIV (PVHA) de: {PATH_CADASTRO_HIV}")
             bases["Cadastro_HIV"] = pd.read_csv(PATH_CADASTRO_HIV, sep=";", encoding="latin-1", low_memory=False)
         else:
             print(f"Arquivo de Cadastro HIV não encontrado: {PATH_CADASTRO_HIV}")
             bases["Cadastro_HIV"] = pd.DataFrame()
 
-    # 4. Carregar PVHA e Sinan (Opcionais/Auxiliares)
-    if carregar_pvha:
         if os.path.exists(PATH_PVHA):
              bases["PVHA"] = pd.read_csv(PATH_PVHA, sep=";", encoding="latin-1", low_memory=False)
         
