@@ -9,7 +9,7 @@ from .preprocessing import enrich_disp_data, calculate_intervals, flag_first_las
 from .data_loader import carregar_bases
 from .cleaning import clean_disp_df
 from .preprocessing import enrich_disp_data, calculate_intervals, flag_first_last_disp
-from .analysis import generate_disp_metrics, generate_new_users_metrics, generate_prep_history, classify_prep_users, generate_population_metrics
+from .analysis import generate_disp_metrics, generate_new_users_metrics, generate_prep_history, classify_prep_users, generate_population_metrics, classify_udm_active
 from .excel_generator import export_to_excel
 
 def main():
@@ -29,13 +29,15 @@ def main():
     print(f"Executando Monitoramento PrEP para data: {data_fechamento}")
     
     # 1. Carregar Bases
+    # carregar_disp=True, carregar_cad=True, carregar_pvha=True -> Carrega tudo que precisamos
     bases = carregar_bases(data_fechamento, carregar_disp=True, carregar_cad=True, carregar_pvha=True)
     
     df_disp = bases.get("Disp", pd.DataFrame())
-    df_cad_prep = bases.get("Cadastro_PrEP", pd.DataFrame()) # Cadastro PrEP (Demográfico)
-    df_cad_hiv = bases.get("Cadastro_HIV", pd.DataFrame())   # Cadastro HIV (PVHA)
+    df_cad_prep = bases.get("Cadastro_PrEP", pd.DataFrame()) # Demográfico
+    df_cad_hiv = bases.get("Cadastro_HIV", pd.DataFrame())   # PVHA (Cod_unificado)
     df_pvha = bases.get("PVHA", pd.DataFrame())
     df_pvha_prim = bases.get("PVHA_Prim", pd.DataFrame())
+    df_ibge = bases.get("Tabela_IBGE", pd.DataFrame())
     
     if df_disp.empty:
         print("Erro: Base de dispensas vazia ou não encontrada.")
@@ -44,25 +46,38 @@ def main():
     # 2. Limpeza (Conforme orientações estritas)
     df_disp, df_disp_semdupl = clean_disp_df(df_disp, args.data_fechamento)
     
-    # 4. Análise Básica (Apenas Dispensas por Mês/Ano para validação)
+    # 3. Processamento (Enriquecimento completo com os 4 merges)
+    df_disp_semdupl = enrich_disp_data(df_disp_semdupl, df_cad_prep, df_cad_hiv, df_pvha, df_pvha_prim, df_ibge)
+    df_disp_semdupl = calculate_intervals(df_disp_semdupl)
+    df_disp_semdupl = flag_first_last_disp(df_disp_semdupl)
+    
+    # 4. Análise e Outputs
+    # a) Histórico EmPrEP Detalhado (Gera flags no dataframe e tabela histórica)
+    # IMPORTANTE: Isso enriche df_disp_semdupl com flags anuais
+    df_disp_semdupl, df_history = generate_prep_history(df_disp_semdupl, args.data_fechamento)
+    
+    # b) Classificação UDM Ativa
+    df_disp_semdupl = classify_udm_active(df_disp_semdupl, args.data_fechamento)
+
+    # c) Classificações Atuais (12m, EmPrEP) 
+    # Agora usa as flags já geradas ou recalcula se necessário (a função classify_prep_users ainda é util para o resumo TXT)
+    classificacoes = classify_prep_users(df_disp_semdupl, args.data_fechamento)
+    
+    # d) Dispensas por Mês/Ano
     disp_metrics = generate_disp_metrics(df_disp_semdupl)
-    print("\n--- Dispensas por Mês/Ano (Validação) ---")
+    print("\n--- Dispensas por Mês/Ano ---")
     print(disp_metrics)
     
-    # 3. Processamento (Merge e Populações - ficarão para depois se necessário)
-    # df_disp_semdupl = enrich_disp_data(df_disp_semdupl, df_cad_prep, df_pvha, df_pvha_prim)
-    
-    # c) Novos Usuários por Mês/Ano
+    # e) Novos Usuários por Mês/Ano
     new_users_metrics = generate_new_users_metrics(df_disp_semdupl)
     
-    # d) Histórico EmPrEP
-    df_history = generate_prep_history(df_disp_semdupl, args.data_fechamento)
-    
-    # e) Populações (apenas Em PrEP atualmente)
+    # f) Populações (apenas Em PrEP atualmente)
     pop_metrics = generate_population_metrics(df_disp_semdupl)
     
     print("\n--- Resultados Processados ---")
     print(f"Em PrEP atualmente: {classificacoes['EmPrEP_Atual']}")
+    print("\n--- Histórico Mensal (Últimos 5 registros) ---")
+    print(df_history.tail().to_string(index=False))
     
     # Exportação
     if not os.path.exists(args.output_dir):
@@ -72,7 +87,7 @@ def main():
         'classificacoes': classificacoes,
         'disp_mes_ano': disp_metrics,
         'novos_usuarios': new_users_metrics,
-        'historico': df_history,
+        'historico': df_history, # Tabela mensal detalhada
         'populacoes': pop_metrics
     }
     

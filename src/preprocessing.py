@@ -98,7 +98,7 @@ def calculate_population_groups(df):
     
     return df
 
-def enrich_disp_data(df_disp_semdupl, df_cadastro, df_pvha, df_pvha_prim, df_ibge=None):
+def enrich_disp_data(df_disp_semdupl, df_cad_prep, df_cad_hiv, df_pvha, df_pvha_prim, df_ibge=None):
     """
     Enriquece o dataframe de dispensa com dados de cadastro, UF, Região, Óbito e IBGE.
     """
@@ -114,56 +114,94 @@ def enrich_disp_data(df_disp_semdupl, df_cadastro, df_pvha, df_pvha_prim, df_ibg
     df_disp_semdupl['UF_UDM'] = df_disp_semdupl['Cod_UF'].map(UF_MAP).fillna('Error')
     df_disp_semdupl['regiao_UDM'] = df_disp_semdupl['Cod_UF'].map(REGIAO_MAP).fillna('Error')
     
-    # 3. Merge com Cadastro
-    if not df_cadastro.empty:
+    # -------------------------------------------------------------------------
+    # MERGE 0: Cadastro PrEP (Demográfico) - Para cálculo de populações
+    # -------------------------------------------------------------------------
+    if not df_cad_prep.empty:
         df_disp_semdupl.columns = df_disp_semdupl.columns.str.strip()
-        df_cadastro.columns = df_cadastro.columns.str.strip()
+        df_cad_prep.columns = df_cad_prep.columns.str.strip()
         
-        print("--- DEBUG MERGE CADASTRO ---")
+        # Identificar chave (preferência por codigo_pac_eleito)
+        merge_key_prep = 'codigo_pac_eleito' if 'codigo_pac_eleito' in df_cad_prep.columns else 'codigo_paciente'
         
-        if 'codigo_pac_eleito' in df_disp_semdupl.columns and 'codigo_pac_eleito' in df_cadastro.columns:
-            merge_key = 'codigo_pac_eleito'
-        elif 'codigo_paciente' in df_disp_semdupl.columns and 'codigo_paciente' in df_cadastro.columns:
-            merge_key = 'codigo_paciente'
-        else:
-            print("AVISO: Chave de merge não encontrada em ambas as bases.")
-            merge_key = None
-
-        if merge_key:
-            cols_demograficas = ['st_orgao_genital', 'tp_sexo_atrib_nasc', 'co_genero', 'co_orientacao_sexual', 
-                                 'raca_cor', 'escolaridade', 'data_nascimento', 'Cod_unificado']
+        if merge_key_prep in df_disp_semdupl.columns:
+            print(f"Merge Cadastro PrEP (Demográfico) via {merge_key_prep}...")
+            cols_demog = ['st_orgao_genital', 'tp_sexo_atrib_nasc', 'co_genero', 'co_orientacao_sexual', 
+                          'raca_cor', 'escolaridade', 'data_nascimento']
+            if merge_key_prep not in cols_demog: cols_demog.append(merge_key_prep)
             
-            if merge_key not in cols_demograficas:
-                cols_demograficas.append(merge_key)
+            # Pega apenas colunas que existem
+            cols_to_merge = [c for c in cols_demog if c in df_cad_prep.columns]
             
-            cols_to_merge = [c for c in cols_demograficas if c in df_cadastro.columns]
+            # Deduplicar
+            df_cad_clean = df_cad_prep[cols_to_merge].drop_duplicates(subset=[merge_key_prep])
             
-            # Deduplicar o cadastro pela chave de merge
-            df_cad_clean = df_cadastro[cols_to_merge].drop_duplicates(subset=[merge_key])
-
-            # Merge
-            df_disp_semdupl = df_disp_semdupl.merge(df_cad_clean, on=merge_key, how='left')
+            df_disp_semdupl = df_disp_semdupl.merge(df_cad_clean, on=merge_key_prep, how='left')
             
-            if 'Cod_unificado' in df_disp_semdupl.columns:
-                df_disp_semdupl['Cod_unificado'] = df_disp_semdupl['Cod_unificado'].astype('Int64')
-            
-            # Calcular grupos populacionais APÓS o merge
+            # Calcular populações
             df_disp_semdupl = calculate_population_groups(df_disp_semdupl)
-        else:
-            print("PULANDO merge com Cadastro por falta de chave compatível.")
 
-    # 4. Merge com PVHA (Apenas para consulta, sem filtrar)
-    if not df_pvha.empty:
+    # -------------------------------------------------------------------------
+    # MERGE 1: Cadastro HIV (PVHA) -> Trazer Cod_unificado
+    # Chave: codigo_paciente
+    # -------------------------------------------------------------------------
+    if not df_cad_hiv.empty and 'codigo_paciente' in df_disp_semdupl.columns:
+        print("Merge 1: Cadastro HIV (Cod_unificado)...")
+        # Garantir tipo compatível
+        # df_disp_semdupl['codigo_paciente'] = df_disp_semdupl['codigo_paciente'].astype(str) # Se necessário
+        
+        cad_hiv_sel = df_cad_hiv[['codigo_paciente', 'Cod_unificado']].drop_duplicates(subset=['codigo_paciente'])
+        df_disp_semdupl = df_disp_semdupl.merge(cad_hiv_sel, on='codigo_paciente', how='left')
+        
+        if 'Cod_unificado' in df_disp_semdupl.columns:
+            df_disp_semdupl['Cod_unificado'] = df_disp_semdupl['Cod_unificado'].astype('Int64')
+
+    # -------------------------------------------------------------------------
+    # MERGE 2: PVHA Prim (Datas) -> Trazer data_min
+    # Chave: Cod_unificado
+    # -------------------------------------------------------------------------
+    if not df_pvha_prim.empty and 'Cod_unificado' in df_disp_semdupl.columns:
+        print("Merge 2: PVHA Prim (Data Diagnóstico)...")
+        pvha_prim_sel = df_pvha_prim[['Cod_unificado', 'data_min']].rename(columns={'data_min': 'data_min_PVHA'})
+        # Garantir unicidade por Cod_unificado se houver duplicação
+        pvha_prim_sel = pvha_prim_sel.drop_duplicates(subset=['Cod_unificado'])
+        
+        df_disp_semdupl = df_disp_semdupl.merge(pvha_prim_sel, on='Cod_unificado', how='left')
+
+    # -------------------------------------------------------------------------
+    # MERGE 3: PVHA (Óbito/Status) -> Trazer data_obito, PVHA
+    # Chave: Cod_unificado
+    # -------------------------------------------------------------------------
+    if not df_pvha.empty and 'Cod_unificado' in df_disp_semdupl.columns:
+        print("Merge 3: PVHA (Óbito/Status)...")
         pvha_sel = df_pvha[['Cod_unificado', 'data_obito', 'PVHA']].copy()
-        if 'Cod_unificado' in df_disp_semdupl.columns:
-            df_disp_semdupl = df_disp_semdupl.merge(pvha_sel, on='Cod_unificado', how='left')
-    
-    if not df_pvha_prim.empty:
-        prim_sel = df_pvha_prim[['Cod_unificado', 'data_min']].rename(columns={'data_min': 'data_min_PVHA'})
-        if 'Cod_unificado' in df_disp_semdupl.columns:
-            df_disp_semdupl = df_disp_semdupl.merge(prim_sel, on='Cod_unificado', how='left')
+        pvha_sel = pvha_sel.drop_duplicates(subset=['Cod_unificado'])
+        
+        df_disp_semdupl = df_disp_semdupl.merge(pvha_sel, on='Cod_unificado', how='left')
+
+    # -------------------------------------------------------------------------
+    # MERGE 4: Tabela IBGE -> Trazer nome_mun
+    # Chave: cod_ibge_udm (no Disp) == Cod_mun_7 (na Tabela)
+    # -------------------------------------------------------------------------
+    if df_ibge is not None and not df_ibge.empty:
+        print("Merge 4: Tabela IBGE (Município)...")
+        # Preparar tabela auxiliar
+        ibge_sel = df_ibge[['Cod_mun_7', 'nome_mun']].rename(columns={'nome_mun': 'nome_mun_udm'})
+        
+        # Garantir tipos compatíveis (converter para numérico ou string em ambos)
+        # Assumindo numérico
+        df_disp_semdupl['cod_ibge_udm'] = pd.to_numeric(df_disp_semdupl['cod_ibge_udm'], errors='coerce')
+        ibge_sel['Cod_mun_7'] = pd.to_numeric(ibge_sel['Cod_mun_7'], errors='coerce')
+        
+        df_disp_semdupl = df_disp_semdupl.merge(
+            ibge_sel, 
+            left_on='cod_ibge_udm', 
+            right_on='Cod_mun_7', 
+            how='left'
+        )
 
     return df_disp_semdupl
+
 
 def calculate_intervals(df_disp_semdupl):
     if 'dt_resultado_testagem_hiv' in df_disp_semdupl.columns:

@@ -138,76 +138,101 @@ def generate_population_metrics(df_disp_semdupl):
 
 def generate_prep_history(df_disp_semdupl, data_fechamento):
     """
-    Gera tabela histórica (2018 até Ano Atual) com:
-    - Ano
-    - Pelo menos uma dispensação nos últimos 12 meses
-    - Em PrEP
-    - % Em PrEP
-    
-    Lógica:
-    Para anos anteriores: Referência é 31/12/ANO.
-    Para ano atual: Referência é data_fechamento.
+    Gera histórico mensal detalhado de adesão (Em PrEP vs Descontinuados) e enriquece
+    o dataframe com flags anuais conforme lógica do usuário.
     """
-    print("Gerando histórico de adesão (2018-Hoje)...")
-    if df_disp_semdupl.empty:
-        return pd.DataFrame()
-        
+    print("Gerando histórico detalhado mensal (2018-Hoje)...")
+    
     hoje_dt = pd.to_datetime(data_fechamento).normalize()
     ano_atual = hoje_dt.year
-    anual_metrics = []
+    mes_atual = hoje_dt.month
     
-    # Pre-calculates valid_until globally as it depends only on row data, not reference date
-    # Garantir datetime
+    # Garantir datetime e valid_until
     df_disp_semdupl['dt_disp'] = pd.to_datetime(df_disp_semdupl['dt_disp'])
     
-    # Calcular valid_until
     if 'duracao_sum' not in df_disp_semdupl.columns:
          if 'duracao' in df_disp_semdupl.columns:
              df_disp_semdupl['duracao_sum'] = df_disp_semdupl['duracao']
          else:
-             df_disp_semdupl['duracao_sum'] = 30 
+             df_disp_semdupl['duracao_sum'] = 30
              
     df_disp_semdupl['valid_until'] = df_disp_semdupl['dt_disp'] + pd.to_timedelta(df_disp_semdupl['duracao_sum'] * 1.4, unit='D')
     
-    for year in range(2018, ano_atual + 1):
-        if year == ano_atual:
-            ref_date = hoje_dt
-        else:
-            ref_date = pd.Timestamp(year=year, month=12, day=31)
-            
-        start_date_12m = ref_date - pd.DateOffset(years=1)
-        
-        # 1. Disp_Ultimos_12m
-        # Filter: dt_disp > start_date_12m AND dt_disp <= ref_date
-        past_year_disp = df_disp_semdupl[
-            (df_disp_semdupl['dt_disp'] > start_date_12m) & 
-            (df_disp_semdupl['dt_disp'] <= ref_date)
-        ].copy()
-        
-        users_12m = past_year_disp['codigo_pac_eleito'].nunique()
-        
-        # 2. Em PrEP
-        # Filter: latest dispensation within 12m window must be valid until >= ref_date
-        if past_year_disp.empty:
-            users_emprep = 0
-        else:
-             past_year_disp = past_year_disp.sort_values(by="dt_disp", ascending=False)
-             past_year_disp_deduplicated = past_year_disp.drop_duplicates(['codigo_pac_eleito'], keep='first')
-             
-             valid_dispensations = past_year_disp_deduplicated[
-                past_year_disp_deduplicated['valid_until'] >= ref_date
-             ]
-             users_emprep = valid_dispensations['codigo_pac_eleito'].nunique()
-        
-        anual_metrics.append({
-            'Ano': year,
-            'Pelo menos uma dispensação nos últimos 12 meses': users_12m,
-            'Em PrEP': users_emprep
-        })
-        
-    df_history = pd.DataFrame(anual_metrics)
+    EmPrEP_monthly_sample = pd.DataFrame(columns=['Year', 'Month', 'Em PrEP', 'Descontinuados'])
     
-    if not df_history.empty:
-        df_history['% Em PrEP'] = ((df_history['Em PrEP'] / df_history['Pelo menos uma dispensação nos últimos 12 meses']) * 100).round(1)
-        
-    return df_history
+    # Loop mensal de Jan/2018 até a data de fechamento
+    for year in range(2018, ano_atual + 1):
+        for month in range(1, 13):
+            # Parar se passar da data de fechamento
+            if year == ano_atual and month > mes_atual:
+                break
+
+            last_day = pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(0)
+            start_date = last_day - pd.offsets.DateOffset(years=1)
+            end_date = last_day
+            
+            # Filtro 12 meses
+            past_year_disp = df_disp_semdupl[
+                (df_disp_semdupl['dt_disp'] > start_date) & 
+                (df_disp_semdupl['dt_disp'] <= end_date)
+            ].copy()
+            
+            # Deduplicar mantendo a mais recente
+            past_year_disp = past_year_disp.sort_values(by="dt_disp", ascending=False)
+            past_year_disp = past_year_disp.drop_duplicates(['codigo_pac_eleito'], keep="first")
+            
+            # Validar adesão
+            valid_disp = past_year_disp[past_year_disp['valid_until'] >= end_date].copy()
+            
+            # Lógica de salvamento de flags no DataFrame principal
+            # Se for o mês exato do fechamento (data atual)
+            if year == ano_atual and month == mes_atual:
+                # Flags Atuais
+                df_disp_semdupl.loc[df_disp_semdupl['codigo_pac_eleito'].isin(past_year_disp['codigo_pac_eleito']), "Disp_Ultimos_12m"] = 'Teve dispensação nos últimos 12 meses'
+                df_disp_semdupl.loc[df_disp_semdupl['codigo_pac_eleito'].isin(valid_disp['codigo_pac_eleito']), "EmPrEP_Atual"] = "Em PrEP atualmente"
+                
+                # Flags do Ano Atual (mesmo parcial)
+                df_disp_semdupl.loc[df_disp_semdupl['codigo_pac_eleito'].isin(past_year_disp['codigo_pac_eleito']), f"Disp_12m_{year}"] = f'Teve dispensação em {year}'
+                df_disp_semdupl.loc[df_disp_semdupl['codigo_pac_eleito'].isin(valid_disp['codigo_pac_eleito']), f"EmPrEP_{year}"] = f"Em PrEP {year}"
+            
+            # Se for Dezembro, salva flags do ano fechado
+            elif month == 12:
+                df_disp_semdupl.loc[df_disp_semdupl['codigo_pac_eleito'].isin(past_year_disp['codigo_pac_eleito']), f"Disp_12m_{year}"] = f'Teve dispensação em {year}'
+                df_disp_semdupl.loc[df_disp_semdupl['codigo_pac_eleito'].isin(valid_disp['codigo_pac_eleito']), f"EmPrEP_{year}"] = f"Em PrEP {year}"
+
+            # Contagens
+            num_users_on_PrEP = valid_disp['codigo_pac_eleito'].nunique()
+            num_discontinued = past_year_disp.shape[0] - num_users_on_PrEP
+            
+            new_row = pd.DataFrame({'Year': [year], 'Month': [month], 'Em PrEP': [num_users_on_PrEP], 'Descontinuados': [num_discontinued]})
+            EmPrEP_monthly_sample = pd.concat([EmPrEP_monthly_sample, new_row], ignore_index=True)
+
+    # Preencher nulos nas colunas criadas
+    if "Disp_Ultimos_12m" in df_disp_semdupl.columns:
+        df_disp_semdupl["Disp_Ultimos_12m"] = df_disp_semdupl["Disp_Ultimos_12m"].fillna("Não teve dispensação nos últimos 12 meses")
+    
+    # Preencher flags anuais nulas
+    for y in range(2018, ano_atual + 1):
+        col_disp = f"Disp_12m_{y}"
+        if col_disp in df_disp_semdupl.columns:
+            df_disp_semdupl[col_disp] = df_disp_semdupl[col_disp].fillna(f"Não teve dispensação em {y}")
+
+    return df_disp_semdupl, EmPrEP_monthly_sample
+
+def classify_udm_active(df_disp_semdupl, data_fechamento):
+    """
+    Classifica se a UDM está ativa nos últimos 12 meses.
+    """
+    print("Classificando UDMs ativas...")
+    hoje_dt = pd.to_datetime(data_fechamento).normalize()
+    inicio_12m = hoje_dt - pd.DateOffset(years=1)
+    
+    udms_com_disp_12m = df_disp_semdupl.loc[
+        (df_disp_semdupl['dt_disp'] > inicio_12m) & (df_disp_semdupl['dt_disp'] <= hoje_dt),
+        'codigo_udm'
+    ].unique()
+    
+    df_disp_semdupl['udm_ativa_12m'] = df_disp_semdupl['codigo_udm'].isin(udms_com_disp_12m)
+    df_disp_semdupl['udm_ativa_12m'] = df_disp_semdupl['udm_ativa_12m'].map({True: 'UDM ativa', False: 'UDM não ativa'})
+    
+    return df_disp_semdupl

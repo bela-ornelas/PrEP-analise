@@ -1,7 +1,7 @@
 import pandas as pd
 import datetime
 import os
-from .config import BASE_PATH_V, CAMINHO_COLUNAS_DEFAULT, PATH_CADASTRO_HIV, PATH_PVHA, PATH_SINAN_ADULTO, PATH_PVHA_PRIM_ULT
+from .config import BASE_PATH_V, CAMINHO_COLUNAS_DEFAULT, PATH_CADASTRO_HIV, PATH_PVHA, PATH_SINAN_ADULTO, PATH_PVHA_PRIM_ULT, PATH_TABELA_IBGE
 
 def calcular_contagem_mes(ano, mes):
     return (ano - 2021) * 12 + mes - 2
@@ -113,6 +113,14 @@ def carregar_bases(hoje: datetime.date,
         if os.path.exists(PATH_PVHA_PRIM_ULT):
              colunas_prim = ['Cod_unificado', 'data_min', 'data_dispensa_prim']
              bases["PVHA_Prim"] = pd.read_csv(PATH_PVHA_PRIM_ULT, sep=";", encoding="latin-1", usecols=colunas_prim, low_memory=True)
+             
+        # Carregar Tabela IBGE
+        if os.path.exists(PATH_TABELA_IBGE):
+            print(f"Carregando Tabela IBGE de: {PATH_TABELA_IBGE}")
+            bases["Tabela_IBGE"] = pd.read_excel(PATH_TABELA_IBGE)
+        else:
+            print(f"Tabela IBGE não encontrada: {PATH_TABELA_IBGE}")
+            bases["Tabela_IBGE"] = pd.DataFrame()
 
     if carregar_sinan:
         if os.path.exists(PATH_SINAN_ADULTO):

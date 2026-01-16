@@ -1,11 +1,9 @@
 import pandas as pd
 import os
-import shutil
 
 def export_to_excel(output_dir, data_fechamento, metrics_dict):
     """
-    Gera o arquivo Excel de monitoramento baseado no modelo.
-    metrics_dict deve conter os DataFrames calculados.
+    Gera um NOVO arquivo Excel de monitoramento com todas as abas.
     """
     data_dt = pd.to_datetime(data_fechamento)
     mes = data_dt.month
@@ -14,24 +12,12 @@ def export_to_excel(output_dir, data_fechamento, metrics_dict):
     filename = f"Monitoramento_PrEP_{mes:02d}_{ano}.xlsx"
     filepath = os.path.join(output_dir, filename)
     
-    # Tentar copiar do modelo se existir localmente
-    modelo_path = "Modelo_PrEP.xlsx"
-    if os.path.exists(modelo_path):
-        print(f"Copiando modelo {modelo_path}...")
-        shutil.copyfile(modelo_path, filepath)
-        mode = 'a'
-        if_sheet_exists = 'overlay'
-    else:
-        print("Modelo não encontrado localmente. Criando novo arquivo Excel.")
-        mode = 'w'
-        if_sheet_exists = None
-
-    print(f"Gerando Excel em: {filepath}")
+    print(f"Gerando NOVO arquivo Excel em: {filepath}")
     
-    with pd.ExcelWriter(filepath, engine='openpyxl', mode=mode, if_sheet_exists=if_sheet_exists) as writer:
+    # Criar novo arquivo (mode='w')
+    with pd.ExcelWriter(filepath, engine='openpyxl', mode='w') as writer:
         # 1. Aba Geral
         if 'classificacoes' in metrics_dict:
-            # Converter dict para DF para exportar
             c = metrics_dict['classificacoes']
             df_geral = pd.DataFrame({
                 'Categoria': ['Teve dispensação nos últimos 12 meses', 
@@ -40,9 +26,9 @@ def export_to_excel(output_dir, data_fechamento, metrics_dict):
                               'Estão descontinuados'],
                 'Total': [c['Disp_Ultimos_12m'], c['Disp_Ultimos_12m_Nao'], c['EmPrEP_Atual'], c['Descontinuados']]
             })
-            df_geral.to_excel(writer, sheet_name='Geral', index=False, startrow=0)
+            df_geral.to_excel(writer, sheet_name='Geral', index=False)
 
-        # 2. Aba Em PrEP por ano
+        # 2. Aba Em PrEP por ano (Histórico Mensal)
         if 'historico' in metrics_dict:
             metrics_dict['historico'].to_excel(writer, sheet_name='Em PrEP por ano', index=False)
 

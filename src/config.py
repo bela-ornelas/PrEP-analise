@@ -11,6 +11,7 @@ PATH_CADASTRO_HIV = r"V:/2025/Monitoramento e Avaliação/COMPARTILHADO/AMA - Ba
 PATH_PVHA = r"V:/2025/Monitoramento e Avaliação/COMPARTILHADO/AMA - Banco de Dados/AMA-VIP/Bancos Compartilhados HIV/PVHA.csv"
 PATH_SINAN_ADULTO = r"V:/2025/Monitoramento e Avaliação/COMPARTILHADO/AMA - Banco de Dados/AMA-VIP/Bancos Compartilhados HIV/Sinan_hiv_adulto.csv"
 PATH_PVHA_PRIM_ULT = r"//SAP109/Bancos AMA/Arquivos Atuais/Bancos Atuais HIV/Mensais/PVHA_prim_ult.csv"
+PATH_TABELA_IBGE = r"V:/2025/Monitoramento e Avaliação/DOCUMENTOS/Power BI/Tabela_IBGE_UF e Municípios.xlsx"
 
 # Ordem dos meses para plotagem/ordenação
 MONTHS_ORDER = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
