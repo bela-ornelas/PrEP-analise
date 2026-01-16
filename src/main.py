@@ -53,15 +53,28 @@ def main():
     
     # 4. Análise e Outputs
     # a) Histórico EmPrEP Detalhado (Gera flags no dataframe e tabela histórica)
-    # IMPORTANTE: Isso enriche df_disp_semdupl com flags anuais
     df_disp_semdupl, df_history = generate_prep_history(df_disp_semdupl, args.data_fechamento)
     
     # b) Classificação UDM Ativa
     df_disp_semdupl = classify_udm_active(df_disp_semdupl, args.data_fechamento)
 
     # c) Classificações Atuais (12m, EmPrEP) 
-    # Agora usa as flags já geradas ou recalcula se necessário (a função classify_prep_users ainda é util para o resumo TXT)
     classificacoes = classify_prep_users(df_disp_semdupl, args.data_fechamento)
+    
+    # -------------------------------------------------------------------------
+    # CONFERÊNCIA DE VALORES (Prints solicitados)
+    # -------------------------------------------------------------------------
+    print("\n--- Conferência EmPrEP_Atual ---")
+    print(df_disp_semdupl.drop_duplicates("codigo_pac_eleito")["EmPrEP_Atual"].value_counts())
+    print()
+
+    data_dt = pd.to_datetime(args.data_fechamento)
+    for ano_e in range(data_dt.year, 2017, -1):
+        col_name = f"EmPrEP_{ano_e}"
+        if col_name in df_disp_semdupl.columns:
+            print(f"--- Contagem {col_name} ---")
+            print(pd.DataFrame(df_disp_semdupl.drop_duplicates("codigo_pac_eleito")[col_name].value_counts()))
+            print()
     
     # d) Dispensas por Mês/Ano
     disp_metrics = generate_disp_metrics(df_disp_semdupl)
