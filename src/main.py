@@ -7,6 +7,7 @@ from .data_loader import carregar_bases
 from .cleaning import clean_disp_df, process_cadastro
 from .preprocessing import enrich_disp_data, calculate_intervals, flag_first_last_disp
 from .analysis import generate_disp_metrics, generate_new_users_metrics, generate_prep_history, classify_prep_users, generate_population_metrics, classify_udm_active
+from .prep_consolidation import create_prep_dataframe
 from .excel_generator import export_to_excel
 
 def main():
@@ -57,6 +58,17 @@ def main():
     
     # b) Classificação UDM Ativa
     df_disp_semdupl = classify_udm_active(df_disp_semdupl, args.data_fechamento)
+
+    # 5. Consolidação Final (df PrEP - Uma linha por paciente)
+    df_prep = create_prep_dataframe(df_disp_semdupl, df_cad_prep, df_cad_hiv, df_pvha, df_pvha_prim)
+    print(f"\n--- DataFrame Consolidado 'df PrEP' ---")
+    print(f"Linhas: {len(df_prep)} (Deve bater com usuários únicos no cadastro)")
+    print(f"Colunas: {len(df_prep.columns)}")
+    
+    # 6. Salvar df_prep em CSV (Opcional, mas útil para conferência)
+    prep_file = os.path.join(args.output_dir, "df_prep_consolidado.csv")
+    print(f"Salvando base consolidada em: {prep_file}")
+    df_prep.to_csv(prep_file, sep=';', index=False)
 
     # c) Classificações Atuais (12m, EmPrEP) 
     classificacoes = classify_prep_users(df_disp_semdupl, args.data_fechamento)
