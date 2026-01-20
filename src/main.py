@@ -9,7 +9,7 @@ from .preprocessing import enrich_disp_data, calculate_intervals, flag_first_las
 from .analysis import generate_disp_metrics, generate_new_users_metrics, generate_prep_history, generate_prep_history_legacy, classify_prep_users, generate_population_metrics, classify_udm_active, generate_annual_summary
 from .prep_consolidation import create_prep_dataframe
 from .excel_generator import export_to_excel
-from .visualization import plot_dispensations, plot_cascade
+from .visualization import plot_dispensations, plot_cascade, plot_prep_annual_summary, plot_new_users
 from .optimization_tools import measure_time, compare_dataframes
 
 def main():
@@ -80,6 +80,12 @@ def main():
     
     # Gerar Gráfico de Cascata
     plot_cascade(df_prep, args.output_dir)
+    
+    # Gerar Gráfico Anual (Barras Agrupadas)
+    plot_prep_annual_summary(df_prep, args.data_fechamento, args.output_dir)
+    
+    # Gerar Gráfico de Novos Usuários
+    plot_new_users(df_prep, args.data_fechamento, args.output_dir)
 
     # c) Classificações Atuais (12m, EmPrEP) 
     classificacoes = classify_prep_users(df_prep, args.data_fechamento)

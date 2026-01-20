@@ -68,10 +68,10 @@ def process_cadastro(df_cad):
     
     # Remover duplicatas mantendo a primeira ocorrência
     if 'codigo_pac_eleito' in df_cad.columns:
-        df_cad.drop_duplicates("codigo_pac_eleito", keep="last", inplace=True)
+        df_cad.drop_duplicates("codigo_pac_eleito", keep="first", inplace=True)
         print(f"Cadastro deduplicado (codigo_pac_eleito). Total: {len(df_cad)}")
     elif 'codigo_paciente' in df_cad.columns:
-        df_cad.drop_duplicates("codigo_paciente", keep="last", inplace=True)
+        df_cad.drop_duplicates("codigo_paciente", keep="first", inplace=True)
         print(f"Cadastro deduplicado (codigo_paciente). Total: {len(df_cad)}")
         
     return df_cad
