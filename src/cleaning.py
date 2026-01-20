@@ -53,6 +53,11 @@ def process_cadastro(df_cad):
 
     print("Iniciando processamento do Cadastro...")
     
+    # Padronizar nome da data de nascimento se necessário
+    if 'data_nascimento' not in df_cad.columns and 'dt_nasc' in df_cad.columns:
+        print("Renomeando/Copiando 'dt_nasc' para 'data_nascimento'")
+        df_cad['data_nascimento'] = df_cad['dt_nasc']
+
     # Lista de colunas de data para normalizar
     # Verifica nomes comuns e variações
     date_cols = ['data_nascimento', 'dt_nasc', 'data_cadastro', 'dt_cadas', 'data_ult_atu', 'dt_ult_atu']
@@ -63,10 +68,10 @@ def process_cadastro(df_cad):
     
     # Remover duplicatas mantendo a primeira ocorrência
     if 'codigo_pac_eleito' in df_cad.columns:
-        df_cad.drop_duplicates("codigo_pac_eleito", keep="first", inplace=True)
+        df_cad.drop_duplicates("codigo_pac_eleito", keep="last", inplace=True)
         print(f"Cadastro deduplicado (codigo_pac_eleito). Total: {len(df_cad)}")
     elif 'codigo_paciente' in df_cad.columns:
-        df_cad.drop_duplicates("codigo_paciente", keep="first", inplace=True)
+        df_cad.drop_duplicates("codigo_paciente", keep="last", inplace=True)
         print(f"Cadastro deduplicado (codigo_paciente). Total: {len(df_cad)}")
         
     return df_cad

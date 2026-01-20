@@ -5,7 +5,7 @@ import pandas as pd
 from .config import MONTHS_ORDER
 from .data_loader import carregar_bases
 from .cleaning import clean_disp_df, process_cadastro
-from .preprocessing import enrich_disp_data, calculate_intervals, flag_first_last_disp
+from .preprocessing import enrich_disp_data, calculate_intervals, flag_first_last_disp, calculate_population_groups
 from .analysis import generate_disp_metrics, generate_new_users_metrics, generate_prep_history, generate_prep_history_legacy, classify_prep_users, generate_population_metrics, classify_udm_active, generate_annual_summary
 from .prep_consolidation import create_prep_dataframe
 from .excel_generator import export_to_excel
@@ -64,7 +64,10 @@ def main():
     df_disp_semdupl = classify_udm_active(df_disp_semdupl, args.data_fechamento)
 
     # 5. Consolidação Final (df PrEP - Uma linha por paciente)
-    df_prep = create_prep_dataframe(df_disp_semdupl, df_cad_prep, df_cad_hiv, df_pvha, df_pvha_prim)
+    df_prep = create_prep_dataframe(df_disp_semdupl, df_cad_prep, df_cad_hiv, df_pvha, df_pvha_prim, data_fechamento=args.data_fechamento)
+    
+    # Recalcular grupos populacionais no consolidado para garantir consistência
+    df_prep = calculate_population_groups(df_prep)
     
     print(f"\n--- DataFrame Consolidado 'df PrEP' ---")
     print(f"Linhas: {len(df_prep)} (Deve bater com usuários únicos no cadastro)")
@@ -119,10 +122,6 @@ def main():
     }
     
     excel_file = export_to_excel(args.output_dir, args.data_fechamento, metrics_to_export)
-    
-    # Manter CSVs antigos para retrocompatibilidade
-    disp_metrics.to_csv(os.path.join(args.output_dir, "Dispensas_Mes_Ano.csv"), sep=";")
-    new_users_metrics.to_csv(os.path.join(args.output_dir, "Novos_Usuarios_Mes_Ano.csv"), sep=";")
 
     end_time = time.time()
     elapsed_time = end_time - start_time

@@ -123,17 +123,21 @@ def generate_population_metrics(df_prep):
         ('raca4_cat', 'Raça/Cor')
     ]
     
+    # Ordens Personalizadas
+    order_fetar = ['<18', '18 a 24', '25 a 29', '30 a 39', '40 a 49', '50 e mais']
+    order_escol = ['Sem educação formal a 3 anos', 'De 4 a 7 anos', 'De 8 a 11 anos', '12 ou mais anos', 'Ignorada/Não informada']
+    
     dfs_to_concat = []
     
     for col, title in variables:
         if col not in df_current.columns:
+            print(f"Aviso: Coluna '{col}' não encontrada em df_prep para relatório de população.")
             continue
             
         # Calcula frequência absoluta
         counts = df_current[col].value_counts(dropna=False)
         
         # Calcula frequência relativa (%)
-        # normalize=True considera NaNs se dropna=False
         percs = df_current[col].value_counts(normalize=True, dropna=False) * 100
         
         # Montar DataFrame temporário
@@ -143,27 +147,27 @@ def generate_population_metrics(df_prep):
             '%': percs.values.round(1)
         })
         
+        # [CORREÇÃO] Converter para objeto para evitar erro de Categorical ao inserir texto novo
+        temp_df['Categoria'] = temp_df['Categoria'].astype(object)
+        
         # Tratamento de Nulos na Categoria para exibição
-        temp_df['Categoria'] = temp_df['Categoria'].fillna('Não Informado/Ignorado')
+        temp_df['Categoria'] = temp_df['Categoria'].fillna('Ignorada/Não informada')
         
-        # Ordenação
-        # Pop_genero_pratica: Decrescente de contagem (já é o default do value_counts)
-        # fetar: Idealmente pela ordem natural das faixas. 
-        # Como value_counts ordena por freq, vamos tentar reordenar pelo index se possível.
-        
+        # ORDENAÇÃO
         if col == 'fetar':
-            # Se 'fetar' for categórico ordenado, podemos ordenar pela categoria
-            try:
-                # Converter para categórico ordenado se não for, ou apenas ordenar strings (funciona ok para faixas numéricas com zeros a esquerda ou formato padrão)
-                # Labels usados: '<18', '18 a 24', '25 a 29', '30 a 39', '40 a 49', '50 e mais'
-                # Sort por string coloca '18 a 24' antes de '25...', mas '50...' vem depois de '40...'. '<18' vem antes de numeros? '<' ascii é 60, '1' é 49. Não.
-                # Melhor confiar na ordem de definição se possível, ou hardcoded.
-                
-                custom_order = ['<18', '18 a 24', '25 a 29', '30 a 39', '40 a 49', '50 e mais']
-                temp_df['Categoria'] = pd.Categorical(temp_df['Categoria'], categories=custom_order, ordered=True)
-                temp_df = temp_df.sort_values('Categoria')
-            except:
-                pass # Mantém ordem de frequência se falhar
+            # Aplicar ordem fixa
+            temp_df['Categoria'] = pd.Categorical(temp_df['Categoria'], categories=order_fetar, ordered=True)
+            temp_df = temp_df.sort_values('Categoria')
+            
+        elif col == 'escol4':
+            # Aplicar ordem fixa
+            # Garantir que 'Ignorada/Não informada' esteja presente ou tratada
+            temp_df['Categoria'] = pd.Categorical(temp_df['Categoria'], categories=order_escol, ordered=True)
+            temp_df = temp_df.sort_values('Categoria')
+            
+        else:
+            # Ordenar por Frequência (Decrescente)
+            temp_df = temp_df.sort_values(by='Frequência', ascending=False)
         
         # Adicionar Total da Seção
         total_count = temp_df['Frequência'].sum()

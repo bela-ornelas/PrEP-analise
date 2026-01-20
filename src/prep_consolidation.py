@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import timedelta
 
-def create_prep_dataframe(df_disp_semdupl, df_cad_prep, df_cad_hiv=pd.DataFrame(), df_pvha=pd.DataFrame(), df_pvha_prim=pd.DataFrame()):
+def create_prep_dataframe(df_disp_semdupl, df_cad_prep, df_cad_hiv=pd.DataFrame(), df_pvha=pd.DataFrame(), df_pvha_prim=pd.DataFrame(), data_fechamento=None):
     """
     Cria o dataframe consolidado 'df PrEP' (uma linha por paciente),
     juntando dados do Cadastro com a última dispensa e métricas históricas.
@@ -100,19 +100,20 @@ def create_prep_dataframe(df_disp_semdupl, df_cad_prep, df_cad_hiv=pd.DataFrame(
         df_prep['mes_ult_disp'] = pd.to_datetime(df_prep['dt_disp_max']).dt.month_name().str[:3]
     
     # 5. Idade e Faixa Etária
-    if 'dt_disp' in df_prep.columns and 'data_nascimento' in df_prep.columns:
-        print("Calculando idade e faixa etária...")
+    if 'data_nascimento' in df_prep.columns:
+        print("Calculando idade (na data da dispensa) e faixa etária...")
         df_prep['dt_disp'] = pd.to_datetime(df_prep['dt_disp'], errors='coerce')
         df_prep['data_nascimento'] = pd.to_datetime(df_prep['data_nascimento'], errors='coerce')
         
-        # Calcular idade na dispensa (em anos)
-        df_prep['idade_disp'] = (df_prep['dt_disp'] - df_prep['data_nascimento']) / timedelta(days=365)
-        df_prep['idade_disp'] = df_prep['idade_disp'].apply(np.floor).astype('Int64')
+        # Calcular idade na data da última dispensa
+        # Usando 365 dias conforme solicitação do usuário
+        df_prep['idade_real'] = (df_prep['dt_disp'] - df_prep['data_nascimento']) / timedelta(days=365)
+        df_prep['idade_real'] = df_prep['idade_real'].apply(np.floor).astype('Int64')
         
         # Faixas Etárias
         cut_points = [-np.inf, 17, 24, 29, 39, 49, np.inf]
         labels = ['<18', '18 a 24', '25 a 29', '30 a 39', '40 a 49', '50 e mais']
         
-        df_prep['fetar'] = pd.cut(df_prep['idade_disp'], bins=cut_points, labels=labels)
+        df_prep['fetar'] = pd.cut(df_prep['idade_real'], bins=cut_points, labels=labels)
     
     return df_prep
