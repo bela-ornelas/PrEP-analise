@@ -24,12 +24,14 @@ python -m src.main --data_fechamento 2025-12-31 --no_cache
 
 ## 2. Descrição dos Outputs (Resultados)
 
-Ao final da execução, os seguintes arquivos serão gerados na pasta de destino (por padrão, a raiz do projeto):
+Ao final da execução, os arquivos serão salvos por padrão em:
+`V:\2026\Monitoramento e Avaliação\DOCUMENTOS\PrEP\Dados_automaticos`
 
 ### A. Planilha Excel: `Monitoramento_PrEP_MM_AAAA.xlsx`
 Contém as seguintes abas:
 - **Geral:** Totais consolidados (Procuraram, Iniciaram, Disp 12m, Em PrEP e Descontinuados).
 - **Em PrEP por ano:** Tabela resumo anual com contagens e % de retenção (2018-Atual).
+- **Dados por UF:** Resumo geográfico por Região e Estado, com totais de dispensas e pacientes ativos.
 - **Em PrEP_mes_ano:** Histórico detalhado mês a mês de usuários ativos e descontinuados.
 - **Disp_total:** Matriz de dispensações totais por mês e ano.
 - **Novos usuários:** Matriz de novos usuários (primeira dispensa) por mês e ano.

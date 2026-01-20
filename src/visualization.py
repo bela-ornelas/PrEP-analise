@@ -283,6 +283,10 @@ def plot_prep_annual_summary(df_prep, data_fechamento, output_dir):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         
+    save_path = os.path.join(output_dir, "PrEP_emprep.png")
+    try:
+        fig.savefig(save_path, facecolor='white', transparent=False, bbox_inches='tight')
+        print(f"Gráfico salvo em: {save_path}")
     except Exception as e:
         print(f"Erro ao salvar gráfico: {e}")
     finally:
@@ -406,11 +410,14 @@ def plot_new_users(df_prep, data_fechamento, output_dir):
         if not match.empty:
             idx = match.index[0]
             
-            # Linha Vertical
-            ax.axvline(idx, linestyle='dotted', color='#F4B183', ymin=0, ymax=0.90)
-            
             # Texto alternado
             text_y = ax.get_ylim()[1] * 0.80 if i % 2 == 0 else ax.get_ylim()[1] * 0.65
+            
+            # Linha Vertical (vlines usa coordenadas de dados, para antes do texto)
+            # Subtrair um pequeno offset do text_y para dar respiro
+            line_ymax = text_y - (y_max * 0.1)
+            ax.vlines(x=idx, ymin=0, ymax=line_ymax, linestyle='dotted', color='#F4B183')
+            
             ax.text(idx, text_y, text, color='#7F7F7F', ha='center', fontsize=9)
 
     # 6. Labels X Agrupados (Ano)

@@ -6,7 +6,7 @@ from .config import MONTHS_ORDER
 from .data_loader import carregar_bases
 from .cleaning import clean_disp_df, process_cadastro
 from .preprocessing import enrich_disp_data, calculate_intervals, flag_first_last_disp, calculate_population_groups
-from .analysis import generate_disp_metrics, generate_new_users_metrics, generate_prep_history, generate_prep_history_legacy, classify_prep_users, generate_population_metrics, classify_udm_active, generate_annual_summary
+from .analysis import generate_disp_metrics, generate_new_users_metrics, generate_prep_history, generate_prep_history_legacy, classify_prep_users, generate_population_metrics, classify_udm_active, generate_annual_summary, generate_uf_summary, generate_mun_summary
 from .prep_consolidation import create_prep_dataframe
 from .excel_generator import export_to_excel
 from .visualization import plot_dispensations, plot_cascade, plot_prep_annual_summary, plot_new_users
@@ -14,12 +14,24 @@ from .optimization_tools import measure_time, compare_dataframes
 
 def main():
     start_time = time.time()
+    
+    default_output = r"V:\2026\Monitoramento e Avaliação\DOCUMENTOS\PrEP\Dados_automaticos"
+    
     parser = argparse.ArgumentParser(description="Monitoramento PrEP CLI")
     parser.add_argument("--data_fechamento", required=True, help="Data de fechamento no formato YYYY-MM-DD (Ex: 2025-09-30)")
-    parser.add_argument("--output_dir", default=".", help="Diretório para salvar os outputs")
+    parser.add_argument("--output_dir", default=default_output, help="Diretório para salvar os outputs")
     parser.add_argument("--no_cache", action="store_true", help="Força o recarregamento das bases da rede, ignorando o cache local.")
     
     args = parser.parse_args()
+    
+    # Garantir que o diretório de saída exista
+    if not os.path.exists(args.output_dir):
+        try:
+            os.makedirs(args.output_dir)
+            print(f"Diretório criado: {args.output_dir}")
+        except Exception as e:
+            print(f"Aviso: Não foi possível criar o diretório {args.output_dir}. Usando diretório atual. Erro: {e}")
+            args.output_dir = "."
     
     # Validar Data
     try:
@@ -114,6 +126,12 @@ def main():
     # g) Resumo Anual (Nova Aba)
     annual_summary = generate_annual_summary(df_prep, args.data_fechamento)
     
+    # h) Resumo por UF (Nova Aba)
+    uf_summary = generate_uf_summary(df_prep, df_disp_semdupl)
+    
+    # i) Resumo por Mun (Nova Aba)
+    mun_summary = generate_mun_summary(df_prep, df_disp_semdupl)
+    
     # Exportação
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
@@ -124,7 +142,9 @@ def main():
         'novos_usuarios': new_users_metrics,
         'historico': df_history, 
         'populacoes': pop_metrics,
-        'annual_summary': annual_summary
+        'annual_summary': annual_summary,
+        'uf_summary': uf_summary,
+        'mun_summary': mun_summary
     }
     
     excel_file = export_to_excel(args.output_dir, args.data_fechamento, metrics_to_export)

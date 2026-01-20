@@ -196,6 +196,124 @@ def generate_population_metrics(df_prep):
     final_df = pd.concat(dfs_to_concat, ignore_index=True)
     return final_df
 
+def generate_uf_summary(df_prep, df_disp_semdupl):
+    """
+    Gera tabela de dados por UF (Aba 'Dados por UF').
+    Combina contagens de pacientes (df_prep) com total de dispensas (df_disp_semdupl).
+    """
+    print("Gerando resumo por UF (Aba 'Dados por UF')...")
+    
+    # 1. Agrupar df_prep (Pacientes)
+    grouped_prep = df_prep.groupby(['regiao_UDM', 'UF_UDM', 'Cod_UF'])
+    
+    # Contagens específicas
+    dispensation_count = grouped_prep['Disp_Ultimos_12m'].apply(lambda x: (x == 'Teve dispensação nos últimos 12 meses').sum())
+    em_prep_count = grouped_prep['EmPrEP_Atual'].apply(lambda x: (x == 'Em PrEP atualmente').sum())
+    descontinuados_count = grouped_prep['EmPrEP_Atual'].apply(lambda x: (x == 'Estão descontinuados').sum())
+    
+    UF_tab = pd.concat([dispensation_count, em_prep_count, descontinuados_count], axis=1)
+    UF_tab.columns = ['dispensation_count', 'em_prep_count', 'descontinuados_count']
+    
+    # Porcentagem
+    UF_tab['percentage'] = (UF_tab['em_prep_count'] / UF_tab['dispensation_count'] * 100).round(0)
+    UF_tab = UF_tab.reset_index()
+    
+    # 2. Agrupar df_disp_semdupl (Total de Dispensas)
+    # Nota: Aqui contamos LINHAS (cada dispensa única dt/pac), não pessoas únicas.
+    disp_total = df_disp_semdupl.groupby('UF_UDM').size().reset_index()
+    disp_total.columns = ['UF_UDM', 'disp_total']
+    
+    # 3. Merge e Formatação Final
+    UF_tab = pd.merge(UF_tab, disp_total, on='UF_UDM', how='left')
+    
+    # Reordenar e Ordenar por Cod_UF
+    UF_tab = UF_tab[['Cod_UF', 'regiao_UDM', 'UF_UDM', 'disp_total', 'dispensation_count', 'em_prep_count', 'descontinuados_count', 'percentage']].sort_values('Cod_UF')
+    
+    # Renomear
+    UF_tab = UF_tab.rename(columns={
+        'Cod_UF': 'Codigo UF',
+        'regiao_UDM': 'Região',
+        'UF_UDM': 'UF',
+        'disp_total': 'Total de dispensas',
+        'dispensation_count': 'Pelo menos uma dispensa nos últimos 12 meses',
+        'em_prep_count': 'Estão em PrEP',
+        'descontinuados_count': 'Descontinuados',
+        'percentage': '% em PrEP'
+    })
+    
+    return UF_tab
+
+def generate_mun_summary(df_prep, df_disp_semdupl):
+    """
+    Gera tabela detalhada por Município/Serviço (Aba 'Mun').
+    """
+    print("Gerando resumo por Município/Serviço (Aba 'Mun')...")
+    
+    # Colunas de agrupamento
+    group_cols = ['regiao_UDM', 'UF_UDM', 'Cod_UF', 'cod_ibge_udm', 'nome_mun_udm', 'nome_udm', 'endereco_udm', 'bairro_udm', 'cep_udm']
+    
+    # Verificar colunas existentes
+    available_cols = [c for c in group_cols if c in df_prep.columns]
+    
+    if not available_cols:
+        return pd.DataFrame()
+    
+    # 1. Agrupar df_prep
+    grouped_prep = df_prep.groupby(available_cols)
+    
+    # Contagens
+    dispensation_count = grouped_prep['Disp_Ultimos_12m'].apply(lambda x: (x == 'Teve dispensação nos últimos 12 meses').sum())
+    em_prep_count = grouped_prep['EmPrEP_Atual'].apply(lambda x: (x == 'Em PrEP atualmente').sum())
+    descontinuados_count = grouped_prep['EmPrEP_Atual'].apply(lambda x: (x == 'Estão descontinuados').sum())
+    
+    UF_mun_tab = pd.concat([dispensation_count, em_prep_count, descontinuados_count], axis=1)
+    UF_mun_tab.columns = ['dispensation_count', 'em_prep_count', 'descontinuados_count']
+    
+    # Porcentagem
+    UF_mun_tab['percentage'] = (UF_mun_tab['em_prep_count'] / UF_mun_tab['dispensation_count'] * 100).round(1)
+    UF_mun_tab = UF_mun_tab.reset_index()
+    
+    # 2. Agrupar df_disp_semdupl (Total de Dispensas por Serviço)
+    if 'nome_udm' in df_disp_semdupl.columns:
+        disp_total = df_disp_semdupl.groupby('nome_udm').size().reset_index()
+        disp_total.columns = ['nome_udm', 'disp_total']
+        
+        # Merge
+        UF_mun_tab = pd.merge(UF_mun_tab, disp_total, on='nome_udm', how='left')
+    else:
+        UF_mun_tab['disp_total'] = 0
+    
+    # Reordenar colunas
+    final_cols = available_cols + ['disp_total', 'dispensation_count', 'em_prep_count', 'descontinuados_count', 'percentage']
+    
+    # Sort
+    if 'cod_ibge_udm' in UF_mun_tab.columns:
+        UF_mun_tab = UF_mun_tab.sort_values('cod_ibge_udm')
+        
+    UF_mun_tab = UF_mun_tab[final_cols]
+    
+    # Renomear
+    rename_map = {
+        'Cod_UF': 'Codigo UF',
+        'regiao_UDM': 'Região',
+        'UF_UDM': 'UF',
+        'cod_ibge_udm': 'Código IBGE',
+        'nome_mun_udm': 'Município',
+        'nome_udm': 'Nome do serviço',
+        'endereco_udm': 'Endereço',
+        'bairro_udm': 'Bairro',
+        'cep_udm': 'CEP',
+        'disp_total': 'Total de dispensas',
+        'dispensation_count': 'Pelo menos uma dispensa nos últimos 12 meses',
+        'em_prep_count': 'Estão em PrEP',
+        'descontinuados_count': 'Descontinuados',
+        'percentage': '% em PrEP'
+    }
+    
+    UF_mun_tab = UF_mun_tab.rename(columns=rename_map)
+    
+    return UF_mun_tab
+
 def generate_prep_history(df_disp_semdupl, data_fechamento):
     """
     Versão OTIMIZADA de generate_prep_history.
