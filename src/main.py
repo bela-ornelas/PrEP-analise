@@ -1,4 +1,5 @@
 import argparse
+import time
 import os
 import pandas as pd
 import datetime
@@ -11,6 +12,7 @@ from .prep_consolidation import create_prep_dataframe
 from .excel_generator import export_to_excel
 
 def main():
+    start_time = time.time()
     parser = argparse.ArgumentParser(description="Monitoramento PrEP CLI")
     parser.add_argument("--data_fechamento", required=True, help="Data de fechamento no formato YYYY-MM-DD (Ex: 2025-09-30)")
     parser.add_argument("--output_dir", default=".", help="Diretório para salvar os outputs")
@@ -136,6 +138,12 @@ def main():
     
     print(f"\nOutputs salvos em: {args.output_dir}")
     print(f"Conferência Final: Número de usuários únicos no Cadastro: {df_cad_prep['codigo_pac_eleito'].nunique()}")
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    minutes = int(elapsed_time // 60)
+    seconds = int(elapsed_time % 60)
+    print(f"\nTempo total de execução: {minutes}m {seconds}s")
 
 if __name__ == "__main__":
     main()
