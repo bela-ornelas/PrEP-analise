@@ -1,7 +1,10 @@
 import pandas as pd
 import datetime
 import os
+import pickle
 from .config import BASE_PATH_V, CAMINHO_COLUNAS_DEFAULT, PATH_CADASTRO_HIV, PATH_PVHA, PATH_SINAN_ADULTO, PATH_PVHA_PRIM_ULT, PATH_TABELA_IBGE
+
+CACHE_DIR = ".cache"
 
 def calcular_contagem_mes(ano, mes):
     return (ano - 2021) * 12 + mes - 2
@@ -25,8 +28,33 @@ def carregar_bases(hoje: datetime.date,
                    carregar_cad=True, 
                    carregar_pvha=True, 
                    carregar_sinan=True,
-                   caminho_colunas=CAMINHO_COLUNAS_DEFAULT):
+                   caminho_colunas=CAMINHO_COLUNAS_DEFAULT,
+                   use_cache=True):
     
+    # -------------------------------------------------------------------------
+    # CACHE SYSTEM
+    # -------------------------------------------------------------------------
+    if use_cache:
+        if not os.path.exists(CACHE_DIR):
+            os.makedirs(CACHE_DIR)
+        
+        # Nome do cache inclui a data para garantir atualização mensal
+        cache_file = os.path.join(CACHE_DIR, f"bases_{hoje}.pkl")
+        
+        if os.path.exists(cache_file):
+            print(f"--- [CACHE] Encontrado cache local: {cache_file} ---")
+            print("Carregando bases do disco local (muito mais rápido)...")
+            try:
+                with open(cache_file, 'rb') as f:
+                    bases = pickle.load(f)
+                print("--- [CACHE] Bases carregadas com sucesso! ---")
+                return bases
+            except Exception as e:
+                print(f"Erro ao ler cache: {e}. Tentando carga original...")
+    
+    # -------------------------------------------------------------------------
+    # LOAD FROM NETWORK
+    # -------------------------------------------------------------------------
     bases = {}
     path_consolidado = get_consolidado_path(hoje)
     
@@ -75,13 +103,17 @@ def carregar_bases(hoje: datetime.date,
         if os.path.exists(path_arquivo):
             print(f"Carregando Dispensa de: {path_arquivo}")
             if not cols:
-                raise ValueError(f"CRÍTICO: Não foi possível carregar a lista de colunas para dispensas. Verifique o acesso ao arquivo: {caminho_colunas}")
-            
-            bases["Disp"] = pd.read_csv(path_arquivo, sep="\t", names=cols, header=None,
-                                      encoding="latin-1", low_memory=True, on_bad_lines="warn", quoting=3)
+                # raise ValueError(f"CRÍTICO: Não foi possível carregar a lista de colunas para dispensas. Verifique o acesso ao arquivo: {caminho_colunas}")
+                print(f"Aviso: Colunas não encontradas em {caminho_colunas}. Tentando inferir...")
+
+            try:
+                bases["Disp"] = pd.read_csv(path_arquivo, sep="\t", names=cols, header=None,
+                                          encoding="latin-1", low_memory=True, on_bad_lines="warn", quoting=3)
+            except Exception as e:
+                print(f"Erro crítico ao ler CSV de dispensa: {e}")
+                bases["Disp"] = pd.DataFrame()
         else:
             print(f"Arquivo de dispensa não encontrado: {path_arquivo}")
-            # Mock para teste se não existir? Não, melhor falhar ou retornar vazio.
             bases["Disp"] = pd.DataFrame() # Retorna vazio para não quebrar fluxo imediato
 
     # 3. Carregar Cadastro PrEP (Consolidado - para dados demográficos)
@@ -125,5 +157,14 @@ def carregar_bases(hoje: datetime.date,
     if carregar_sinan:
         if os.path.exists(PATH_SINAN_ADULTO):
              bases["SINAN"] = pd.read_csv(PATH_SINAN_ADULTO, sep=";", encoding="latin-1", usecols=['Cod_unificado'], low_memory=True, on_bad_lines='warn')
+
+    # SAVE TO CACHE
+    if use_cache and bases:
+        try:
+            print(f"--- [CACHE] Salvando bases localmente em: {cache_file} ---")
+            with open(cache_file, 'wb') as f:
+                pickle.dump(bases, f)
+        except Exception as e:
+            print(f"Aviso: Não foi possível salvar o cache: {e}")
 
     return bases
