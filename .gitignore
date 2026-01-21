@@ -11,3 +11,4 @@ venv/
 *.jpg
 *.png
 Classificacoes.txt
+.cache/
