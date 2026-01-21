@@ -6,11 +6,12 @@ from .config import MONTHS_ORDER
 from .data_loader import carregar_bases
 from .cleaning import clean_disp_df, process_cadastro
 from .preprocessing import enrich_disp_data, calculate_intervals, flag_first_last_disp, calculate_population_groups
-from .analysis import generate_disp_metrics, generate_new_users_metrics, generate_prep_history, generate_prep_history_legacy, classify_prep_users, generate_population_metrics, classify_udm_active, generate_annual_summary, generate_uf_summary, generate_mun_summary
+from .analysis import generate_disp_metrics, generate_new_users_metrics, generate_prep_history, generate_prep_history_legacy, classify_prep_users, generate_population_metrics, classify_udm_active, generate_annual_summary, generate_uf_summary, generate_mun_summary, calculate_ppt_metrics
 from .prep_consolidation import create_prep_dataframe
 from .excel_generator import export_to_excel
-from .visualization import plot_dispensations, plot_cascade, plot_prep_annual_summary, plot_new_users
+from .visualization import plot_dispensations, plot_cascade, plot_prep_annual_summary, plot_new_users, plot_horizontal_bars, plot_modalities, plot_ist_metrics, plot_vertical_bars
 from .optimization_tools import measure_time, compare_dataframes
+from .ppt_generator import generate_ppt
 
 def main():
     start_time = time.time()
@@ -21,8 +22,23 @@ def main():
     parser.add_argument("--data_fechamento", required=True, help="Data de fechamento no formato YYYY-MM-DD (Ex: 2025-09-30)")
     parser.add_argument("--output_dir", default=default_output, help="Diretório para salvar os outputs")
     parser.add_argument("--no_cache", action="store_true", help="Força o recarregamento das bases da rede, ignorando o cache local.")
+    parser.add_argument("--auto", action="store_true", help="Modo automático (não pergunta e gera tudo).")
+    parser.add_argument("--skip_excel", action="store_true", help="Pular geração do Excel.")
+    parser.add_argument("--skip_ppt", action="store_true", help="Pular geração do PowerPoint.")
     
     args = parser.parse_args()
+    
+    # Interatividade (Se não for auto)
+    if not args.auto:
+        print("\n--- Configuração de Saída ---")
+        # Só pergunta se a flag skip NÃO foi passada explicitamente via comando
+        if not args.skip_excel:
+            resp = input("Gerar Excel? (S/n): ").strip().lower()
+            if resp == 'n': args.skip_excel = True
+            
+        if not args.skip_ppt:
+            resp = input("Gerar PowerPoint? (S/n): ").strip().lower()
+            if resp == 'n': args.skip_ppt = True
     
     # Garantir que o diretório de saída exista
     if not os.path.exists(args.output_dir):
@@ -132,7 +148,7 @@ def main():
     # i) Resumo por Mun (Nova Aba)
     mun_summary = generate_mun_summary(df_prep, df_disp_semdupl)
     
-    # Exportação
+    # Exportação Excel
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
         
@@ -147,7 +163,53 @@ def main():
         'mun_summary': mun_summary
     }
     
-    excel_file = export_to_excel(args.output_dir, args.data_fechamento, metrics_to_export)
+    if not args.skip_excel:
+        excel_file = export_to_excel(args.output_dir, args.data_fechamento, metrics_to_export)
+    else:
+        print("\n[INFO] Geração de Excel pulada pelo usuário.")
+
+    # -------------------------------------------------------------------------
+    # GERAÇÃO DO POWERPOINT
+    # -------------------------------------------------------------------------
+    if not args.skip_ppt:
+        print("\n--- Iniciando Geração do PowerPoint ---")
+        
+        # 1. Calcular Métricas para o Texto dos Slides
+        ppt_metrics = calculate_ppt_metrics(df_prep, df_disp_semdupl, args.data_fechamento)
+        
+        # 2. Gerar Gráficos Adicionais para o PPT
+        
+        # Slide 5: Populações (Roxo, %, sem Outros)
+        plot_horizontal_bars(df_prep, 'Pop_genero_pratica', 'PrEP_pop.png', args.output_dir, 
+                             color='#604A7B', show_percentage=True, filter_others=True)
+        
+        # Slide 6: Faixa Etária (Vertical, Azul Escuro, %)
+        plot_vertical_bars(df_prep, 'fetar', 'PrEP_fetar.png', args.output_dir, 
+                           color='#254061', show_percentage=True)
+        
+        # Slide 7: Escolaridade (Vertical, %, Sem Ignorado)
+        escol_order = ["Sem educação formal a 3 anos", "De 4 a 7 anos", "De 8 a 11 anos", "12 ou mais anos"]
+        plot_vertical_bars(df_prep, 'escol4', 'PrEP_escol4.png', args.output_dir, 
+                           color='#215968', show_percentage=True, filter_ignored=True, custom_order=escol_order)
+                           
+        # Slide 8: Raça (Horizontal, %)
+        plot_horizontal_bars(df_prep, 'raca4_cat', 'PrEP_raca.png', args.output_dir, 
+                             color='#215968', show_percentage=True)
+        
+        # Tentar gerar gráfico de IST se coluna existir (ajuste 'st_ist' conforme seu banco real)
+        if 'st_ist' in df_prep.columns:
+            plot_horizontal_bars(df_prep, 'st_ist', 'PrEP_IST.png', args.output_dir, color='#C0504D')
+        
+        # Gráfico de Modalidades (Horizontal Bars Teal)
+        plot_modalities(df_disp_semdupl, args.output_dir)
+        
+        # Gráfico de IST (Baseado em Dispensas)
+        plot_ist_metrics(df_disp_semdupl, args.output_dir)
+        
+        # 3. Criar Arquivo PPTX
+        generate_ppt(args.output_dir, ppt_metrics, args.data_fechamento)
+    else:
+        print("\n[INFO] Geração de PowerPoint pulada pelo usuário.")
 
     end_time = time.time()
     elapsed_time = end_time - start_time

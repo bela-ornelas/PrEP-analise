@@ -146,6 +146,90 @@ def calculate_population_groups(df):
     
     return df
 
+def create_ist_variable(df):
+    """
+    Cria a variável IST_autorrelato baseada nas colunas de sintomas/diagnósticos.
+    """
+    print("Criando variável IST_autorrelato...")
+    
+    # Lista de colunas de IST
+    ist_cols = ['st_ferida_vagina_penis', 'st_ferida_anus', 'st_verruga_vagina_penis', 'st_verruga_anus',
+                'st_bolhas_vagina_penis', 'st_bolhas_anus', 'st_corrimento_vaginal', 'st_sifilis', 
+                'st_suspeita_mpox', 'st_diagnost_mpox','st_gonorreia_clamidia']
+    
+    # Garantir que colunas existam e sejam numéricas
+    for col in ist_cols + ['st_nao']:
+        if col not in df.columns:
+            df[col] = 0
+        else:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+    # Lógica do notebook
+    cond_nenhuma = df['st_nao'] == 1
+    cond_alguma = df[ist_cols].sum(axis=1) >= 1
+    
+    df['IST_autorrelato'] = np.where(cond_nenhuma, 'Nenhuma IST autorrelatada',
+                                     np.where(cond_alguma, 'Alguma IST autorrelatada', None))
+                                     
+    return df
+
+def create_modalities_variable(df):
+    """
+    Cria a variável 'recomendadoXrealizado' comparando prescrição anterior com uso atual.
+    """
+    print("Criando variáveis de Modalidade (recomendadoXrealizado)...")
+    
+    # Ordenar
+    df = df.sort_values(by=['codigo_pac_eleito', 'dt_disp'])
+    
+    # Verificar colunas necessárias
+    if 'tp_modalidade' not in df.columns:
+        print("Aviso: 'tp_modalidade' não encontrada.")
+        return df
+        
+    # Shift para pegar a modalidade prescrita na dispensa ANTERIOR
+    df['esquema_prescrito_disp_anterior'] = df.groupby('codigo_pac_eleito')['tp_modalidade'].shift()
+    
+    # Marcar primeira dispensa
+    # idxmin pega o índice da primeira ocorrência (menor data)
+    # df.groupby...idxmin() retorna indices.
+    first_disp_indices = df.groupby('codigo_pac_eleito')['dt_disp'].idxmin()
+    df.loc[first_disp_indices, 'esquema_prescrito_disp_anterior'] = 'primeira dispensa'
+    
+    if 'tp_esquema_prep' not in df.columns:
+        print("Aviso: 'tp_esquema_prep' não encontrada. Pulando recomendadoXrealizado.")
+        return df
+
+    conditions = [
+        (df['esquema_prescrito_disp_anterior'] == 'PrEP diária') & (df['tp_esquema_prep'] == 'Esquema diário'),
+        (df['esquema_prescrito_disp_anterior'] == 'PrEP sob demanda') & (df['tp_esquema_prep'] == 'Esquema sob demanda'),
+        (df['esquema_prescrito_disp_anterior'] == 'PrEP diária') & (df['tp_esquema_prep'] == 'Ambos'),
+        (df['esquema_prescrito_disp_anterior'] == 'PrEP sob demanda') & (df['tp_esquema_prep'] == 'Ambos'),
+        (df['esquema_prescrito_disp_anterior'] == 'PrEP diária') & (df['tp_esquema_prep'] == 'Eu não tomei'),
+        (df['esquema_prescrito_disp_anterior'] == 'PrEP sob demanda') & (df['tp_esquema_prep'] == 'Eu não tomei'),
+        (df['esquema_prescrito_disp_anterior'] == 'PrEP diária') & (df['tp_esquema_prep'] == 'Esquema sob demanda'),
+        (df['esquema_prescrito_disp_anterior'] == 'PrEP sob demanda') & (df['tp_esquema_prep'] == 'Esquema diário')
+    ]
+
+    choices = [
+        'Prescrição diária,tomou de acordo',
+        'Prescrição sob demanda,tomou de acordo',
+        'Ambos (misturou modalidades)',
+        'Ambos (misturou modalidades)',
+        'Não tomou',
+        'Não tomou',
+        'Prescrição diária, tomou sob demanda',
+        'Prescrição sob demanda, tomou diária'
+    ]
+    
+    df['recomendadoXrealizado'] = np.select(conditions, choices, default='nan')
+    df['recomendadoXrealizado'] = df['recomendadoXrealizado'].replace('nan', np.nan)
+    
+    # Set primeira dispensa explicitamente onde o anterior for primeira dispensa
+    df.loc[df['esquema_prescrito_disp_anterior'] == 'primeira dispensa', 'recomendadoXrealizado'] = 'primeira dispensa'
+    
+    return df
+
 def enrich_disp_data(df_disp_semdupl, df_cad_prep, df_cad_hiv, df_pvha, df_pvha_prim, df_ibge=None):
     """
     Enriquece o dataframe de dispensa com dados de cadastro, UF, Região, Óbito e IBGE.
@@ -154,6 +238,12 @@ def enrich_disp_data(df_disp_semdupl, df_cad_prep, df_cad_hiv, df_pvha, df_pvha_
         return df_disp_semdupl
 
     print("Enriquecendo dados de Dispensa...")
+    
+    # Criar variável de IST
+    df_disp_semdupl = create_ist_variable(df_disp_semdupl)
+    
+    # Criar variável de Modalidade
+    df_disp_semdupl = create_modalities_variable(df_disp_semdupl)
 
     # 1. UF e Região da UDM
     df_disp_semdupl['Cod_IBGE'] = df_disp_semdupl['cod_ibge_udm'].astype(str).str.split('.').str[0]

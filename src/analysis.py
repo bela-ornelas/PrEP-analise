@@ -314,6 +314,169 @@ def generate_mun_summary(df_prep, df_disp_semdupl):
     
     return UF_mun_tab
 
+def calculate_ppt_metrics(df_prep, df_disp_semdupl, data_fechamento):
+    """
+    Calcula todas as métricas textuais necessárias para o PowerPoint.
+    """
+    print("Calculando métricas para o PPT...")
+    metrics = {}
+    
+    # Datas
+    hoje_dt = pd.to_datetime(data_fechamento)
+    # Formato "set/2025"
+    mes_abbr = MONTHS_ORDER[hoje_dt.month - 1].lower()
+    metrics['hoje2'] = f"{mes_abbr}/{hoje_dt.year}"
+    metrics['ano_atual'] = str(hoje_dt.year)
+    
+    # Slide 2: Novos Usuários (Último Mês)
+    if 'dt_disp_min' in df_prep.columns:
+        mask_last_month = (df_prep['dt_disp_min'].dt.year == hoje_dt.year) & \
+                          (df_prep['dt_disp_min'].dt.month == hoje_dt.month)
+        metrics['latest_month_year_count'] = "{:,}".format(mask_last_month.sum()).replace(",", ".")
+    else:
+        metrics['latest_month_year_count'] = "0"
+
+    # Slide 3: Mediana de Uso
+    if 'duracao_sum_total' in df_prep.columns:
+        metrics['mediana_uso'] = df_prep['duracao_sum_total'].median()
+    else:
+        # Fallback
+        metrics['mediana_uso'] = 0
+
+    # Slide 4: Cascata
+    count_disp12m = (df_prep['Disp_Ultimos_12m'] == 'Teve dispensação nos últimos 12 meses').sum()
+    count_emprep = (df_prep['EmPrEP_Atual'] == 'Em PrEP atualmente').sum()
+    count_desc = (df_prep['EmPrEP_Atual'] == 'Estão descontinuados').sum()
+    
+    metrics['formatted_em_prep_count'] = "{:,}".format(count_emprep).replace(",", ".")
+    metrics['formatted_discontinued_count'] = "{:,}".format(count_desc).replace(",", ".")
+    
+    metrics['emPrEP_porcent'] = f"{(count_emprep/count_disp12m*100):.0f}" if count_disp12m > 0 else "0"
+    metrics['descontinuados_porcent'] = f"{(count_desc/count_disp12m*100):.0f}" if count_disp12m > 0 else "0"
+
+    # Helper
+    def get_top_category(series):
+        if series.dropna().empty: return "N/A", 0, 0
+        vc = series.value_counts(normalize=True) * 100
+        vc_abs = series.value_counts()
+        top_cat = vc.index[0]
+        return top_cat, vc.iloc[0], vc_abs.iloc[0]
+
+    # Filtrar Ativos
+    df_active = df_prep[df_prep['EmPrEP_Atual'] == 'Em PrEP atualmente']
+    
+    # Slide 5: Populações
+    cat, perc, count = get_top_category(df_active['Pop_genero_pratica'])
+    metrics['highest_category_pop'] = cat
+    metrics['highest_percentage_pop'] = perc
+    metrics['formatted_highest_count_pop'] = "{:,}".format(count).replace(",", ".")
+
+    # Slide 6: Faixa Etária
+    cat, perc, count = get_top_category(df_active['fetar'])
+    metrics['highest_category_fetar'] = cat
+    metrics['highest_percentage_fetar'] = perc
+    metrics['formatted_highest_count_fetar'] = "{:,}".format(count).replace(",", ".")
+    
+    if 'idade_real' in df_active.columns:
+        young_mask = (df_active['idade_real'] >= 18) & (df_active['idade_real'] <= 29)
+        young_count = young_mask.sum()
+        young_perc = (young_count / len(df_active) * 100) if len(df_active) > 0 else 0
+        metrics['formatted_young_percentage'] = f"{young_perc:.0f}"
+        metrics['formatted_young_counts'] = "{:,}".format(young_count).replace(",", ".")
+        metrics['median_age'] = int(df_active['idade_real'].median()) if not df_active['idade_real'].isna().all() else 0
+    else:
+        metrics['formatted_young_percentage'] = "0"
+        metrics['formatted_young_counts'] = "0"
+        metrics['median_age'] = 0
+
+    # Slide 7: Escolaridade
+    cat, perc, count = get_top_category(df_active['escol4'])
+    metrics['highest_category_escol'] = cat
+    metrics['highest_percentage_escol'] = perc
+    metrics['formatted_highest_count_escol'] = "{:,}".format(count).replace(",", ".")
+
+    # Slide 8: Raça
+    cat, perc, count = get_top_category(df_active['raca4_cat'])
+    metrics['highest_category_raca'] = cat
+    metrics['highest_percentage_raca'] = perc
+    metrics['formatted_highest_count_raca'] = "{:,}".format(count).replace(",", ".")
+    
+    negra_mask = df_active['raca4_cat'].isin(['Preta', 'Parda'])
+    negra_count = negra_mask.sum()
+    negra_perc = (negra_count / len(df_active) * 100) if len(df_active) > 0 else 0
+    metrics['formatted_raca_negra_percentage'] = f"{negra_perc:.0f}"
+    metrics['formatted_raca_negra_counts'] = "{:,}".format(negra_count).replace(",", ".")
+
+    # Slide 9: IST
+    # Procurar a coluna correta (pode ter espaços ou variações)
+    col_ist_auto = None
+    for c in df_disp_semdupl.columns:
+        if str(c).strip() == 'IST_autorrelato':
+            col_ist_auto = c
+            break
+            
+    if col_ist_auto:
+        # Denominador: Registros não nulos na coluna
+        denominator_val = df_disp_semdupl[col_ist_auto].notna().sum()
+        
+        # Counts e Percs
+        counts = df_disp_semdupl[col_ist_auto].value_counts()
+        percs = df_disp_semdupl[col_ist_auto].value_counts(normalize=True) * 100
+        
+        if not percs.empty:
+            top_cat = percs.idxmax()
+            top_count = counts[top_cat]
+            top_perc = percs[top_cat]
+            
+            metrics['denominator_IST'] = "{:,}".format(denominator_val).replace(",", ".")
+            metrics['highest_percentage_IST'] = top_perc
+            metrics['formatted_highest_count_IST'] = "{:,}".format(top_count).replace(",", ".")
+            metrics['highest_category_IST'] = top_cat
+        else:
+            metrics['denominator_IST'] = "0"
+            metrics['highest_percentage_IST'] = 0
+            metrics['formatted_highest_count_IST'] = "0"
+            metrics['highest_category_IST'] = "informação de IST"
+    else:
+        # Fallback se a coluna não existir no df_disp_semdupl
+        metrics['denominator_IST'] = "0"
+        metrics['highest_percentage_IST'] = 0
+        metrics['formatted_highest_count_IST'] = "0"
+        metrics['highest_category_IST'] = "informação de IST"
+
+    # Slide 10: Modalidade (Texto)
+    col_mod_text = None
+    for c in ['tp_modalidade', 'st_esquema_posologia', 'tipo_dispensacao']:
+        if c in df_disp_semdupl.columns:
+            col_mod_text = c
+            break
+            
+    if col_mod_text:
+        # Total de registros válidos na coluna
+        total_mod = df_disp_semdupl[col_mod_text].notna().sum()
+        
+        # Contagem robusta via regex
+        mask_diaria = df_disp_semdupl[col_mod_text].astype(str).str.contains('di.ria', case=False, regex=True, na=False)
+        n_diaria = mask_diaria.sum()
+        
+        mask_demanda = df_disp_semdupl[col_mod_text].astype(str).str.contains('demanda', case=False, regex=True, na=False)
+        n_demanda = mask_demanda.sum()
+        
+        p_diaria = (n_diaria / total_mod * 100) if total_mod > 0 else 0
+        p_demanda = (n_demanda / total_mod * 100) if total_mod > 0 else 0
+        
+        metrics['prep_diaria_percent'] = int(round(p_diaria))
+        metrics['prep_diaria_count_formatted'] = "{:,}".format(n_diaria).replace(",", ".")
+        metrics['prep_demand_percent'] = int(round(p_demanda))
+        metrics['prep_demand_count_formatted'] = "{:,}".format(n_demanda).replace(",", ".")
+    else:
+        metrics['prep_diaria_percent'] = 0
+        metrics['prep_diaria_count_formatted'] = "0"
+        metrics['prep_demand_percent'] = 0
+        metrics['prep_demand_count_formatted'] = "0"
+
+    return metrics
+
 def generate_prep_history(df_disp_semdupl, data_fechamento):
     """
     Versão OTIMIZADA de generate_prep_history.

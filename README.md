@@ -30,35 +30,53 @@ Ao final da execução, os arquivos serão salvos por padrão em:
 ### A. Planilha Excel: `Monitoramento_PrEP_MM_AAAA.xlsx`
 Contém as seguintes abas:
 - **Geral:** Totais consolidados (Procuraram, Iniciaram, Disp 12m, Em PrEP e Descontinuados).
-- **Em PrEP por ano:** Tabela resumo anual com contagens e % de retenção (2018-Atual).
-- **Dados por UF:** Resumo geográfico por Região e Estado, com totais de dispensas e pacientes ativos.
-- **Em PrEP_mes_ano:** Histórico detalhado mês a mês de usuários ativos e descontinuados.
 - **Disp_total:** Matriz de dispensações totais por mês e ano.
 - **Novos usuários:** Matriz de novos usuários (primeira dispensa) por mês e ano.
+- **Em PrEP por ano:** Tabela resumo anual com contagens e % de retenção (2018-Atual).
+- **Em PrEP_mes_ano:** Histórico detalhado mês a mês de usuários ativos e descontinuados.
 - **Populações (em PrEP):** Perfil sociodemográfico (População Chave, Faixa Etária, Escolaridade e Raça) dos usuários ativos.
+- **Dados por UF:** Resumo geográfico por Região e Estado.
+- **Mun:** Resumo detalhado por Município e Serviço de Saúde.
 
-### B. Gráficos (PNG):
-- **`PrEP_disp.png`:** Histórico mensal de dispensas totais.
-- **`PrEP_cascata.png`:** Cascata/Funil do cuidado PrEP (da procura à adesão).
-- **`PrEP_emprep.png`:** Comparativo anual de usuários com dispensa vs. usuários que permaneceram em PrEP (inclui % de retenção).
-- **`PrEP_novosusuarios.png`:** Histórico de novos usuários com anotações de marcos históricos (Pandemia, Teleatendimento, etc.).
+### B. Gráficos (PNG) e PowerPoint:
+- **`Monitoramento_PrEP_MM_AAAA.pptx`:** Apresentação completa gerada automaticamente.
+- Imagens individuais: `PrEP_disp.png`, `PrEP_cascata.png`, `PrEP_emprep.png`, `PrEP_novosusuarios.png`, etc.
 
 ### C. Base de Dados: `df_prep_consolidado.csv`
-- Arquivo CSV (separado por `;`) contendo **uma linha por paciente**.
-- Base rica com dados demográficos, datas da primeira e última dispensa, e flags de status.
-- Ideal para ser importada em ferramentas de BI (PowerBI, Tableau) ou para conferências rápidas.
+- Arquivo CSV contendo **uma linha por paciente**.
 
 ---
 
 ## 3. Ferramenta de Consulta Rápida
-Para consultar frequências na base consolidada sem abrir o Excel ou rodar o script novamente:
+Para consultar frequências na base consolidada sem abrir o Excel:
 ```powershell
-python check_data.py nome_da_coluna
+python check_data.py fetar --filter "EmPrEP_Atual == 'Em PrEP atualmente'"
 ```
-*Exemplo:* `python check_data.py fetar --filter "EmPrEP_Atual == 'Em PrEP atualmente'"`
 
 ---
 
 ## 4. Notas Técnicas
-- **Performance:** O motor de cálculo histórico foi otimizado com NumPy, reduzindo o tempo de processamento lógico de minutos para poucos segundos.
-- **Consistência:** Os números do terminal, do Excel e dos Gráficos são extraídos da mesma base consolidada (`df_prep`), garantindo integridade total dos dados.
+- **Performance:** O motor de cálculo histórico foi otimizado com NumPy.
+- **Consistência:** Os números do terminal, do Excel e dos Gráficos são extraídos da mesma base consolidada (`df_prep`).
+
+---
+
+## 5. Modos de Execução (Interatividade e Automação)
+
+O script suporta diferentes modos de operação para flexibilidade:
+
+1.  **Interatividade (Padrão):** Se rodar sem flags especiais, o script perguntará se você deseja gerar o Excel e o PowerPoint.
+    ```powershell
+    python -m src.main --data_fechamento 2025-12-31
+    # Pergunta: Gerar Excel? [S/n]
+    ```
+
+2.  **Automação Total (`--auto`):** Pula todas as perguntas e gera tudo (ideal para agendador de tarefas).
+    ```powershell
+    python -m src.main --data_fechamento 2025-12-31 --auto
+    ```
+
+3.  **Controle Fino:** Você pode forçar ou pular etapas específicas.
+    *   `--skip_excel`: Não gera a planilha.
+    *   `--skip_ppt`: Não gera a apresentação.
+    *   `--no_cache`: Força download da rede.
