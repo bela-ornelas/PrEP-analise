@@ -22,7 +22,29 @@ python -m src.main --data_fechamento 2025-12-31 --no_cache
 
 ---
 
-## 2. Descrição dos Outputs (Resultados)
+## 2. Modos de Execução (Interatividade e Automação)
+
+O script suporta diferentes modos de operação para flexibilidade:
+
+1.  **Interatividade (Padrão):** Se rodar sem flags especiais, o script perguntará se você deseja gerar o Excel e o PowerPoint.
+    ```powershell
+    python -m src.main --data_fechamento 2025-12-31
+    # Pergunta: Gerar Excel? [S/n]
+    ```
+
+2.  **Automação Total (`--auto`):** Pula todas as perguntas e gera tudo (ideal para agendador de tarefas).
+    ```powershell
+    python -m src.main --data_fechamento 2025-12-31 --auto
+    ```
+
+3.  **Controle Fino:** Você pode forçar ou pular etapas específicas.
+    *   `--skip_excel`: Não gera a planilha.
+    *   `--skip_ppt`: Não gera a apresentação.
+    *   `--no_cache`: Força download da rede.
+
+---
+
+## 3. Descrição dos Outputs (Resultados)
 
 Ao final da execução, os arquivos serão salvos por padrão em:
 `V:\2026\Monitoramento e Avaliação\DOCUMENTOS\PrEP\Dados_automaticos`
@@ -47,7 +69,7 @@ Contém as seguintes abas:
 
 ---
 
-## 3. Ferramenta de Consulta Rápida
+## 4. Ferramenta de Consulta Rápida
 Para consultar frequências na base consolidada sem abrir o Excel:
 ```powershell
 python check_data.py fetar --filter "EmPrEP_Atual == 'Em PrEP atualmente'"
@@ -55,28 +77,12 @@ python check_data.py fetar --filter "EmPrEP_Atual == 'Em PrEP atualmente'"
 
 ---
 
-## 4. Notas Técnicas
+## 5. Notas Técnicas
 - **Performance:** O motor de cálculo histórico foi otimizado com NumPy.
 - **Consistência:** Os números do terminal, do Excel e dos Gráficos são extraídos da mesma base consolidada (`df_prep`).
 
 ---
 
-## 5. Modos de Execução (Interatividade e Automação)
-
-O script suporta diferentes modos de operação para flexibilidade:
-
-1.  **Interatividade (Padrão):** Se rodar sem flags especiais, o script perguntará se você deseja gerar o Excel e o PowerPoint.
-    ```powershell
-    python -m src.main --data_fechamento 2025-12-31
-    # Pergunta: Gerar Excel? [S/n]
-    ```
-
-2.  **Automação Total (`--auto`):** Pula todas as perguntas e gera tudo (ideal para agendador de tarefas).
-    ```powershell
-    python -m src.main --data_fechamento 2025-12-31 --auto
-    ```
-
-3.  **Controle Fino:** Você pode forçar ou pular etapas específicas.
-    *   `--skip_excel`: Não gera a planilha.
-    *   `--skip_ppt`: Não gera a apresentação.
-    *   `--no_cache`: Força download da rede.
+## 6. Arquivos Chave (Referência Rápida)
+- **DataFrame Principal:** `df_prep_consolidado.csv` (Nota: O separador é `;`).
+- **Script de Análise:** `analise_perfis_engajamento_prep.py` (Responsável pela análise de coorte e regressão).
