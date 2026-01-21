@@ -167,7 +167,7 @@ def executar_regressao_multinomial(df):
             eq_key = str(i + 1)
 
             for var_name in params.index:
-                if "Intercept" in var_name or "Year" in var_name or "Region" in var_name: continue
+                if "Intercept" in var_name or "Year" in var_name: continue
                 
                 aor = params.iloc[params.index.get_loc(var_name), i]
                 pval = pvalues.iloc[pvalues.index.get_loc(var_name), i]
@@ -183,6 +183,7 @@ def executar_regressao_multinomial(df):
                 display_name = display_name.replace("C(Edu, Treatment('High'))[T.", "Edu: ")
                 display_name = display_name.replace("C(Race, Treatment('White'))[T.", "Race: ")
                 display_name = display_name.replace("C(Age, Treatment('30-39'))[T.", "Age: ")
+                display_name = display_name.replace("C(Region, Treatment('Sudeste'))[T.", "Reg: ")
                 display_name = display_name.replace("]", "")
                 
                 sig = "*" if pval < 0.05 else ""
@@ -288,18 +289,82 @@ def main():
     # 7. Salvar Excel
     output_file = "Tabelas_Abstract_PrEP.xlsx"
     print(f"\nSalvando resultados em: {output_file}...")
+    
+    # Preparar Tabela Bonita (Layout Publicação)
+    df_pretty = pd.DataFrame()
+    if df_reg_results is not None:
+        # Formatar coluna combinada: "2.03 (1.61-2.56)*"
+        df_reg_results['Formatted'] = df_reg_results.apply(
+            lambda x: f"{x['aOR']:.2f} ({x['CI_Lower']:.2f}–{x['CI_Upper']:.2f}){x['Significant']}", 
+            axis=1
+        )
+        
+        # Pivotar
+        df_pretty = df_reg_results.pivot(index='Variable_Clean', columns='Outcome', values='Formatted')
+        
+        # Adicionar Linhas de Referência (Ref: 1.00)
+        ref_rows = {
+            'Pop: HSH (Ref)': '1.00 (Ref)',
+            'Age: 30-39 (Ref)': '1.00 (Ref)',
+            'Edu: High (Ref)': '1.00 (Ref)',
+            'Race: White (Ref)': '1.00 (Ref)',
+            'Reg: Sudeste (Ref)': '1.00 (Ref)'
+        }
+        
+        # Inserir no DataFrame
+        for idx, val in ref_rows.items():
+            df_pretty.loc[idx] = val
+        
+        # Ordem Lógica Final (Agrupada)
+        custom_order = [
+            # População
+            'Pop: HSH (Ref)', 
+            'Pop: Travesti', 'Pop: MulherTrans', 'Pop: HomemTrans', 
+            'Pop: MulherCis', 'Pop: HeteroCis', 'Pop: NaoBinario',
+            # Idade
+            'Age: 30-39 (Ref)',
+            'Age: <18', 'Age: 18-24', 'Age: 25-29', 'Age: 40-49', 'Age: 50+',
+            # Escolaridade
+            'Edu: High (Ref)',
+            'Edu: Medium', 'Edu: Low', 'Edu: None',
+            # Raça
+            'Race: White (Ref)',
+            'Race: Black', 'Race: Brown', 'Race: Indig',
+            # Região
+            'Reg: Sudeste (Ref)',
+            'Reg: Nort', 'Reg: Nord', 'Reg: Cent', 'Reg: Sul'
+        ]
+        
+        # Reindexar (Isso descarta o que não estiver na lista e ordena o resto)
+        # Atenção: Precisamos garantir que os nomes batam exatamente com o gerado pelo script
+        # O script gera 'Pop: HSH' ou usa isso como ref?
+        # O statsmodels OMITE a referência. Então 'Pop: HSH' não existe no df_pretty original.
+        # Nós acabamos de criar 'Pop: HSH (Ref)' manualmente.
+        
+        df_pretty = df_pretty.reindex(custom_order)
+        df_pretty.index.name = 'Characteristic'
+        
+        # Preencher NaNs (caso alguma categoria tenha sido dropada por n=0) com hífen
+        df_pretty = df_pretty.fillna('-')
+
     try:
         with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
-            ct.round(1).to_excel(writer, sheet_name='Geral_Populacao')
+            # Aba 1: Tabela Formatada para o Abstract (A "Bonita")
+            if not df_pretty.empty:
+                df_pretty.to_excel(writer, sheet_name='Tabela_Abstract_Final')
+                
+            # Abas de Apoio
+            ct.round(1).to_excel(writer, sheet_name='Descritiva_Perc')
             
             # Abas Interseccionais
-            ct_race.round(1).to_excel(writer, sheet_name='Intersec_Pop_Raca')
-            ct_edu.round(1).to_excel(writer, sheet_name='Intersec_Pop_Edu')
-            ct_age.round(1).to_excel(writer, sheet_name='Intersec_Pop_Idade')
+            intersectional_data['Pop_Raca'].round(1).to_excel(writer, sheet_name='Intersec_Pop_Raca')
+            intersectional_data['Pop_Escolaridade'].round(1).to_excel(writer, sheet_name='Intersec_Pop_Edu')
             
             if df_reg_results is not None:
-                df_reg_results.to_excel(writer, sheet_name='Regressao_Multinomial', index=False)
+                df_reg_results.to_excel(writer, sheet_name='Dados_Brutos_Regressao', index=False)
+                
         print("Arquivo Excel gerado com sucesso!")
+        print(">>> A aba 'Tabela_Abstract_Final' contém o layout pronto para publicação.")
     except Exception as e:
         print(f"Erro ao salvar Excel: {e}")
 
