@@ -102,10 +102,10 @@ def generate_ppt(output_dir, metrics, data_fechamento):
     # SLIDE 2: Novos Usuários
     slide = ppt.slides.add_slide(ppt.slide_layouts[6])
     
-    # Imagem (Fundo) - Restaurado posicionamento original
+    # Imagem (Fundo) - Ajustado Left=3.0 (Direita) para evitar sobreposição com texto
     chart_img_path = os.path.join(output_dir, 'PrEP_novosusuarios.png')
     if os.path.exists(chart_img_path):
-        slide.shapes.add_picture(chart_img_path, Inches(1.5), Inches(1.0), height=Inches(6.0))
+        slide.shapes.add_picture(chart_img_path, Inches(0.3), Inches(0.2), width=Inches(8),height=Inches(4))
     
     # Texto (Frente)
     title_box = slide.shapes.add_textbox(Inches(0.3), Inches(0.2), width=Inches(8), height=Inches(4))
