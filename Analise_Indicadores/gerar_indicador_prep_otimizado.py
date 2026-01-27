@@ -20,6 +20,15 @@ OUTPUT_DIR = r"V:\2026\Monitoramento e Avaliação\DOCUMENTOS\PrEP\Indicador PrE
 # Ordem Solicitada
 ORDEM_REGIOES = ['Norte', 'Nordeste', 'Sudeste', 'Sul', 'Centro-Oeste']
 
+# Mapeamento Fixo IBGE -> Sigla (Garantia para nomes de arquivos)
+MAP_UF_SIGLA = {
+    '11': 'RO', '12': 'AC', '13': 'AM', '14': 'RR', '15': 'PA', '16': 'AP', '17': 'TO',
+    '21': 'MA', '22': 'PI', '23': 'CE', '24': 'RN', '25': 'PB', '26': 'PE', '27': 'AL', '28': 'SE', '29': 'BA',
+    '31': 'MG', '32': 'ES', '33': 'RJ', '35': 'SP',
+    '41': 'PR', '42': 'SC', '43': 'RS',
+    '50': 'MS', '51': 'MT', '52': 'GO', '53': 'DF'
+}
+
 # =============================================================================
 # FUNÇÕES DE CARREGAMENTO
 # =============================================================================
@@ -81,7 +90,7 @@ def gerar_series_mensais(df_prep, df_disp, df_pvha, data_fechamento):
     """
     print("\n--- GERANDO SÉRIES MENSAIS (MUNICÍPIO) ---")
     
-    start_date = pd.to_datetime("2018-01-01")
+    start_date = pd.to_datetime("2022-01-01")
     end_date = pd.to_datetime(data_fechamento)
     dates = pd.date_range(start=start_date, end=end_date, freq='ME') # Month End
     
@@ -134,10 +143,9 @@ def gerar_series_mensais(df_prep, df_disp, df_pvha, data_fechamento):
         date_ref_np = date_ref.to_datetime64()
         
         # A) Em PrEP
-        # Filtro: Dispensa válida na data de referência E dispensa feita até a data E dispensa não muito antiga (> 1 ano atrás para cortar excessos, opcional, mas seguro)
-        start_window = (date_ref - pd.DateOffset(years=2)).to_datetime64()
-        
-        mask_prep = (arr_valid >= date_ref_np) & (arr_disp <= date_ref_np) & (arr_disp > start_window)
+        # Filtro: Dispensa válida na data de referência E dispensa feita até a data
+        # Nota: Retirada a janela de 2 anos para alinhar estritamente com a validade calculada (logica original)
+        mask_prep = (arr_valid >= date_ref_np) & (arr_disp <= date_ref_np)
         
         if np.any(mask_prep):
             # Usuários ativos neste mês
@@ -282,14 +290,51 @@ def main():
     
     # Enriquecer Geográfico
     if not map_ibge.empty:
-        col_uf = next((c for c in map_ibge.columns if c.lower() == 'uf'), 'UF')
+        # Detecção de colunas mais robusta
+        cols_lower = {c.lower(): c for c in map_ibge.columns}
+        
+        # UF: Tenta encontrar 'uf', 'sigla_uf', etc
+        col_uf = next((c for c in map_ibge.columns if c.lower() in ['uf', 'sigla_uf', 'sg_uf']), None)
+        if not col_uf: col_uf = next((c for c in map_ibge.columns if 'uf' in c.lower()), 'UF')
+        
+        # Tentar identificar explicitamente a Sigla se col_uf for Código
+        # Geralmente tabela IBGE tem 'codigo_uf' e 'sigla_uf' ou 'uf' (sigla) e 'nome_uf'
+        col_sigla_uf = next((c for c in map_ibge.columns if c.lower() in ['sigla_uf', 'sg_uf', 'uf_sigla']), None)
+        # Se não achou sigla explícita, verifica se a col_uf já parece ser sigla (texto curto) ou código
+        # Mas vamos assumir o que foi detectado em col_uf como primário.
+            
+        # Região: Tenta encontrar 'regiao', 'nome_regiao'
         col_reg = next((c for c in map_ibge.columns if 'regia' in c.lower()), 'Região')
-        col_nome = next((c for c in map_ibge.columns if 'nome' in c.lower() or 'municip' in c.lower()), 'nome_mun')
+        
+        # Município: Evitar colunas que tenham 'uf' no nome (ex: Nome_UF)
+        candidatos_mun = [c for c in map_ibge.columns if ('nome' in c.lower() or 'municip' in c.lower()) and 'uf' not in c.lower()]
+        # Preferência por 'nome_mun' ou 'municipio'
+        col_nome = next((c for c in candidatos_mun if c.lower() in ['nome_mun', 'municipio', 'no_municipio']), None)
+        if not col_nome:
+             col_nome = candidatos_mun[0] if candidatos_mun else 'nome_mun'
+             
+        print(f"   Colunas detectadas no IBGE -> Mun: '{col_nome}', UF: '{col_uf}', Reg: '{col_reg}'")
+
         Indicador['Município'] = Indicador.index.map(map_ibge[col_nome]).fillna('Desconhecido')
         Indicador['UF_Res'] = Indicador.index.map(map_ibge[col_uf]).fillna('Ign')
         Indicador['regiao_Res'] = Indicador.index.map(map_ibge[col_reg]).fillna('Ign')
+        
+        # Criar mapa Código UF -> Sigla UF para nomes de arquivos
+        # Inicializa com o mapa fixo de garantia
+        map_cod_sigla = MAP_UF_SIGLA.copy()
+        
+        if col_sigla_uf:
+             temp_map = map_ibge[[col_uf, col_sigla_uf]].drop_duplicates().set_index(col_uf)[col_sigla_uf].to_dict()
+             map_cod_sigla.update({str(k): v for k, v in temp_map.items()})
+             # Adiciona Sigla ao dataframe principal para conferência
+             Indicador['Sigla_UF'] = Indicador.index.map(map_ibge[col_sigla_uf]).fillna(Indicador['UF_Res'].astype(str).map(MAP_UF_SIGLA)).fillna(Indicador['UF_Res'])
+        else:
+             # Usa o mapa fixo para preencher a coluna Sigla_UF
+             Indicador['Sigla_UF'] = Indicador['UF_Res'].astype(str).map(MAP_UF_SIGLA).fillna(Indicador['UF_Res'])
+             
     else:
-        Indicador[['Município', 'UF_Res', 'regiao_Res']] = 'Desconhecido'
+        Indicador[['Município', 'UF_Res', 'regiao_Res', 'Sigla_UF']] = 'Desconhecido'
+        map_cod_sigla = MAP_UF_SIGLA.copy()
 
     # Enriquecer População
     if not pop_ibge.empty:
@@ -320,8 +365,12 @@ def main():
     
     # Mapa cod -> nome
     if not df_ibge.empty:
-        col_nome_ibge = next((c for c in df_ibge.columns if 'nome' in c.lower() or 'municip' in c.lower()), 'nome_mun')
-        map_mun = df_ibge[[ "codigo_ibge_resid", col_nome_ibge]].drop_duplicates("codigo_ibge_resid").set_index("codigo_ibge_resid")[col_nome_ibge]
+        # Reutilizando a lógica robusta de detecção
+        candidatos_mun = [c for c in df_ibge.columns if ('nome' in c.lower() or 'municip' in c.lower()) and 'uf' not in c.lower()]
+        col_nome_ibge = next((c for c in candidatos_mun if c.lower() in ['nome_mun', 'municipio', 'no_municipio']), None)
+        if not col_nome_ibge: col_nome_ibge = candidatos_mun[0] if candidatos_mun else 'nome_mun'
+        
+        map_mun = df_ibge[["codigo_ibge_resid", col_nome_ibge]].drop_duplicates("codigo_ibge_resid").set_index("codigo_ibge_resid")[col_nome_ibge]
         codigos_ibge = df_ibge["codigo_ibge_resid"].sort_values().unique()
     else:
         # Fallback
@@ -368,24 +417,11 @@ def main():
 
     # CONFERÊNCIA
     print("\n" + "="*50)
-    print("CONFERÊNCIA DE DADOS")
+    print("CONFERÊNCIA DE DADOS (BRASIL)")
     print("="*50)
-    cod_bsb = '5300108'
-    print(f"\n>>> DADOS DE BRASÍLIA ({cod_bsb}):")
-    if cod_bsb in Indicador.index:
-        dados_bsb = Indicador.loc[cod_bsb]
-        print(f"   Vinculados: {dados_bsb['Vinculados']}")
-        print(f"   Em PrEP:    {dados_bsb['Em PrEP']}")
-        print(f"   Indicador:  {dados_bsb['Indicador_Mun']}")
-    
-    print(f"\n>>> SÉRIE HISTÓRICA (Base PrEP - Totais Nacionais via Colunas PrEP_unico):")
-    cols_historico = [c for c in df_prep.columns if c.startswith('EmPrEP_') and c != 'EmPrEP_Atual']
-    cols_historico.sort()
-    for col in cols_historico:
-        ano_col = col.split('_')[1]
-        val = f"Em PrEP {ano_col}"
-        print(f"   {col}: {len(df_prep[df_prep[col] == val])}")
-    print(f"   EmPrEP_Atual: {len(df_prep[df_prep['EmPrEP_Atual'] == 'Em PrEP atualmente'])}")
+    print(f"   Vinculados: {Indicador_Nac['Vinculados'].values[0]}")
+    print(f"   Em PrEP:    {Indicador_Nac['Em PrEP'].values[0]}")
+    print(f"   Indicador:  {Indicador_Nac['Indicador_Nac'].values[0]}")
     print("="*50 + "\n")
 
     # SALVAR
@@ -393,7 +429,7 @@ def main():
     if not os.path.exists(args.output_dir): os.makedirs(args.output_dir, exist_ok=True)
     
     print(f"Salvando: {filename} ...")
-    cols_mun = ['regiao_Res', 'UF_Res', 'codigo_ibge_resid','Município','Populacao_resid','Vinculados', 'Em PrEP','Indicador_Mun','Grupo']
+    cols_mun = ['regiao_Res', 'UF_Res', 'Sigla_UF', 'codigo_ibge_resid','Município','Populacao_resid','Vinculados', 'Em PrEP','Indicador_Mun','Grupo']
     
     try:
         with pd.ExcelWriter(filename, engine='openpyxl') as writer:
@@ -401,8 +437,11 @@ def main():
             tabela_geral_mun.to_excel(writer, sheet_name="Geral", startrow=len(tabela_geral_UF) + 3)
             tabela_mun_50k.to_excel(writer, sheet_name="Geral", startrow=len(tabela_geral_UF) + 3 + len(tabela_geral_mun) + 3)
             
-            Indicador[cols_mun].to_excel(writer, sheet_name="Município", index=False)
-            Indicador[Indicador["Populacao_resid"] >= 50000][cols_mun].to_excel(writer, sheet_name="Município_50k", index=False)
+            # Garantir colunas existentes
+            cols_to_save = [c for c in cols_mun if c in Indicador.columns]
+            
+            Indicador[cols_to_save].to_excel(writer, sheet_name="Município", index=False)
+            Indicador[Indicador["Populacao_resid"] >= 50000][cols_to_save].to_excel(writer, sheet_name="Município_50k", index=False)
             Indicador_UF_Unique.to_excel(writer, sheet_name="UF", index=False)
             Indicador_Reg_Unique.to_excel(writer, sheet_name="Região", index=False)
             Indicador_Nac.to_excel(writer, sheet_name="Nacional")
@@ -415,6 +454,161 @@ def main():
             
     except Exception as e:
         print(f"Erro ao salvar: {e}")
+
+    # =============================================================================
+    # GERAR ARQUIVOS POR UF
+    # =============================================================================
+    print("\n--- GERANDO ARQUIVOS INDIVIDUAIS POR UF ---")
+    pasta_saida_uf = r"V:\2026\Monitoramento e Avaliação\DOCUMENTOS\PrEP\Indicador PrEP HIV\Indicador UF"
+    
+    if not os.path.exists(pasta_saida_uf):
+        try:
+            os.makedirs(pasta_saida_uf, exist_ok=True)
+        except:
+            print(f"Aviso: Não foi possível criar/acessar diretório de UF: {pasta_saida_uf}")
+            # Fallback para local se rede falhar
+            pasta_saida_uf = os.path.join(args.output_dir, "Indicador UF")
+            os.makedirs(pasta_saida_uf, exist_ok=True)
+
+    ufs = Indicador['UF_Res'].unique()
+    
+    # Diagnóstico de totais para conferência
+    print("   [Diagnóstico] Verificando totais antes da quebra por UF:")
+    # Exemplo MG (31)
+    mg_code = next((u for u in ufs if str(u) == '31'), None)
+    if mg_code:
+        check_mg = Indicador[Indicador['UF_Res'] == mg_code]
+        print(f"      MG (Code 31) -> Linhas: {len(check_mg)}, Vinculados: {check_mg['Vinculados'].sum()}, Em PrEP: {check_mg['Em PrEP'].sum()}")
+    
+    for uf in ufs:
+        if str(uf) in ['Ign', 'nan', 'None', 'Desconhecido']: continue
+        
+        # Determinar Nome/Sigla para o arquivo
+        # Tenta pegar da coluna Sigla_UF na primeira ocorrência desse UF
+        try:
+            sigla_row = Indicador[Indicador['UF_Res'] == uf]['Sigla_UF'].iloc[0]
+            sigla = str(sigla_row).strip().upper()
+        except:
+            sigla = str(uf).strip().upper()
+        
+        # Se a sigla ainda for numérica (ex: "31"), e tivermos o mapa, tenta usar
+        if sigla.isdigit() and map_cod_sigla:
+             sigla = str(map_cod_sigla.get(str(uf), sigla))
+
+        aba1 = Indicador_UF_Unique[Indicador_UF_Unique['UF_Res'] == uf]
+        
+        # Aba 2: Municípios > 50k
+        cols_to_save_uf = [c for c in cols_mun if c in Indicador.columns]
+        aba2 = Indicador[
+            (Indicador['UF_Res'] == uf) &
+            (Indicador["Populacao_resid"] >= 50000)
+        ][cols_to_save_uf]
+        
+        nome_arquivo = f"Indicador_PrEP_{sigla}_{mes}_{ano}.xlsx"
+        caminho_arquivo = os.path.join(pasta_saida_uf, nome_arquivo)
+        
+        try:
+            with pd.ExcelWriter(caminho_arquivo, engine='openpyxl') as writer:
+                aba1.to_excel(writer, sheet_name="Indicador_UF", index=False)
+                aba2.to_excel(writer, sheet_name="Municípios_50000+", index=False)
+            print(f"   Salvo: {nome_arquivo} (UF: {uf})")
+        except Exception as e:
+            print(f"   Erro ao salvar {nome_arquivo}: {e}")
+
+    # =============================================================================
+    # GERAR ARQUIVO AHA (Solicitação Específica)
+    # =============================================================================
+    print("\n--- GERANDO ARQUIVO AHA ---")
+    
+    # Definir pasta de saída
+    pasta_aha = os.path.join(r"V:\2026\Monitoramento e Avaliação\DOCUMENTOS\PrEP\Indicador PrEP HIV", "AHA")
+    if not os.path.exists(pasta_aha):
+        try:
+            os.makedirs(pasta_aha, exist_ok=True)
+        except:
+             # Fallback para output_dir local/rede definido nos argumentos
+             pasta_aha = os.path.join(args.output_dir, "AHA")
+             os.makedirs(pasta_aha, exist_ok=True)
+
+    # 1. Calcular Série Histórica Brasil
+    # Soma de todos os municípios mês a mês
+    prep_brasil_hist = EmPrEP_Serie_Historica_mun.sum()
+    vinc_brasil_hist = Vinculados_mun2.sum()
+    
+    # Calcular indicador Brasil
+    ind_brasil_hist = prep_brasil_hist.div(vinc_brasil_hist).replace([np.inf, -np.inf], np.nan).fillna(0).round(2)
+    
+    # 2. Identificar Códigos das Capitais Escolhidas
+    # Lista de interesse
+    cap_nomes = ['Campo Grande', 'Curitiba', 'Florianópolis', 'Fortaleza', 'Porto Alegre']
+    
+    # Mapa auxiliar Nome -> UF para desambiguação (ex: Campo Grande MS vs AL)
+    cap_uf_map = {
+        'Campo Grande': 'MS',
+        'Curitiba': 'PR',
+        'Florianópolis': 'SC',
+        'Fortaleza': 'CE',
+        'Porto Alegre': 'RS'
+    }
+    
+    # Lista final de DataFrames para concatenar
+    rows_aha = []
+    
+    # Adicionar Capitais
+    for nome in cap_nomes:
+        uf_alvo = cap_uf_map.get(nome)
+        
+        # Tentar encontrar o código IBGE correto no DataFrame 'Indicador'
+        # Verifica se Sigla_UF existe, senão tenta UF_Res
+        if 'Sigla_UF' in Indicador.columns:
+            mask = (Indicador['Município'].str.lower() == nome.lower()) & (Indicador['Sigla_UF'].astype(str).str.upper() == uf_alvo)
+        else:
+            # Fallback se Sigla_UF não foi gerada corretamente (tenta usar o mapa fixo no UF_Res)
+            # Assume que UF_Res pode ser código, então converte
+            mask = (Indicador['Município'].str.lower() == nome.lower()) & (Indicador['UF_Res'].astype(str).map(MAP_UF_SIGLA).fillna(Indicador['UF_Res']).str.upper() == uf_alvo)
+            
+        match = Indicador[mask]
+        
+        if not match.empty:
+            cod_ibge = match.index[0] # Pega o primeiro match (código ibge)
+            
+            # Buscar a série histórica deste código em Indicador_mes_mun
+            # Indicador_mes_mun tem 'nome_mun' e as colunas de data. O index é o código IBGE (definido na linha 343)
+            if cod_ibge in Indicador_mes_mun.index:
+                # Selecionar linha, remover 'nome_mun' e renomear series para o Nome da Capital
+                row = Indicador_mes_mun.loc[cod_ibge].drop('nome_mun', errors='ignore')
+                row.name = nome
+                rows_aha.append(row)
+        else:
+            print(f"   Aviso: Capital não encontrada na base: {nome} ({uf_alvo})")
+
+    # Adicionar Brasil
+    ind_brasil_hist.name = 'Brasil'
+    
+    # Garantir que as colunas do Brasil estejam na mesma ordem/set das capitais
+    # Pegar as colunas de meses do Indicador_mes_mun (que já foram ordenadas na linha 353)
+    cols_meses_finais = [c for c in Indicador_mes_mun.columns if c != 'nome_mun']
+    rows_aha.append(ind_brasil_hist[cols_meses_finais])
+    
+    # Criar DataFrame Final
+    if rows_aha:
+        df_aha = pd.DataFrame(rows_aha)
+        
+        # Reordenar linhas conforme a lista solicitada + Brasil
+        ordem_final = cap_nomes + ['Brasil']
+        df_aha = df_aha.reindex(ordem_final)
+        
+        # Salvar
+        filename_aha = f"Indicador_PrEP_AHA_{mes:02d}_{ano}.xlsx"
+        path_arquivo_aha = os.path.join(pasta_aha, filename_aha)
+        
+        try:
+            df_aha.to_excel(path_arquivo_aha)
+            print(f"   Arquivo AHA salvo com sucesso: {path_arquivo_aha}")
+        except Exception as e:
+            print(f"   Erro ao salvar arquivo AHA: {e}")
+    else:
+        print("   Erro: Nenhuma capital ou dados do Brasil foram processados para o arquivo AHA.")
 
 if __name__ == "__main__":
     main()

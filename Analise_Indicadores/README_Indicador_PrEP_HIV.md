@@ -71,13 +71,12 @@ O script gera um arquivo Excel (`Indicador_PrEP_MM_AAAA.xlsx`) salvo em `V:\2026
 4.  **UF:** Agregado por Unidade Federativa.
 5.  **Região:** Agregado por Região (Ordem: Norte, Nordeste, Sudeste, Sul, Centro-Oeste).
 6.  **Nacional:** Totais Brasil.
-7.  **Mensal_municipio:** Histórico mês a mês do indicador para cada município (Jan/2018 até data atual).
+7.  **Mensal_municipio:** Histórico mês a mês do indicador para cada município (Jan/2022 até data atual).
 
 ---
 
 ## 🛠️ Manutenção
 
-*   **Ordem das Regiões:** Fixada no código como `['Norte', 'Nordeste', 'Sudeste', 'Sul', 'Centro-Oeste']`.
 *   **Classificação de Grupos:**
     *   *Sem novos vinculados e sem PrEP*
     *   *Sem novos vinculados, com pessoas em PrEP*
