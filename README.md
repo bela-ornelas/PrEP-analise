@@ -85,4 +85,4 @@ python check_data.py fetar --filter "EmPrEP_Atual == 'Em PrEP atualmente'"
 
 ## 6. Arquivos Chave (Referência Rápida)
 - **DataFrame Principal:** `df_prep_consolidado.csv` (Nota: O separador é `;`).
-- **Script de Análise:** `analise_perfis_engajamento_prep.py` (Responsável pela análise de coorte e regressão).
+- 
