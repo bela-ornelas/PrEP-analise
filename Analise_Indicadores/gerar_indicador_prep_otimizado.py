@@ -3,6 +3,7 @@ import numpy as np
 import sys
 import os
 import argparse
+import time
 from datetime import datetime
 import shutil
 from pathlib import Path
@@ -248,6 +249,7 @@ def gerar_tabela_resumo(series_grupo, nome_col_qtd):
 # =============================================================================
 
 def main():
+    start_time = time.time()
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_fechamento", required=True)
     parser.add_argument("--path_prep", default=PATH_PREP_UNICO)
@@ -410,6 +412,16 @@ def main():
         "Indicador_Nac": [(Indicador['Em PrEP'].sum() / Indicador['Vinculados'].sum()) if Indicador['Vinculados'].sum() > 0 else 0]
     }, index=["Brasil"]).round(2)
 
+    # Série Histórica Brasil (Mensal)
+    prep_brasil_hist = EmPrEP_Serie_Historica_mun.sum()
+    vinc_brasil_hist = Vinculados_mun2.sum()
+    Indicador_mes_BR = prep_brasil_hist.div(vinc_brasil_hist).replace([np.inf, -np.inf], np.nan).fillna(0).round(2)
+    Indicador_mes_BR.name = 'Brasil'
+    # Ordenar colunas (mesma ordem do município)
+    cols_meses_br = [c for c in Indicador_mes_mun.columns if c != "nome_mun"]
+    # Transpor para ficar em linha como solicitado (ou manter Series e salvar como DataFrame transposto)
+    df_mes_br = pd.DataFrame(Indicador_mes_BR).T[cols_meses_br]
+
     # Tabelas Resumo
     tabela_geral_UF = gerar_tabela_resumo(Indicador_UF_Unique['Grupo'], 'Qtd UF')
     tabela_geral_mun = gerar_tabela_resumo(Indicador['Grupo'], 'Qtd municípios')
@@ -446,6 +458,7 @@ def main():
             Indicador_Reg_Unique.to_excel(writer, sheet_name="Região", index=False)
             Indicador_Nac.to_excel(writer, sheet_name="Nacional")
             Indicador_mes_mun.to_excel(writer, sheet_name="Mensal_municipio")
+            df_mes_br.to_excel(writer, sheet_name="Mensal_BR")
             
         print(f"Arquivo salvo com sucesso.")
         if os.path.exists(args.output_dir):
@@ -471,14 +484,6 @@ def main():
             os.makedirs(pasta_saida_uf, exist_ok=True)
 
     ufs = Indicador['UF_Res'].unique()
-    
-    # Diagnóstico de totais para conferência
-    print("   [Diagnóstico] Verificando totais antes da quebra por UF:")
-    # Exemplo MG (31)
-    mg_code = next((u for u in ufs if str(u) == '31'), None)
-    if mg_code:
-        check_mg = Indicador[Indicador['UF_Res'] == mg_code]
-        print(f"      MG (Code 31) -> Linhas: {len(check_mg)}, Vinculados: {check_mg['Vinculados'].sum()}, Em PrEP: {check_mg['Em PrEP'].sum()}")
     
     for uf in ufs:
         if str(uf) in ['Ign', 'nan', 'None', 'Desconhecido']: continue
@@ -530,13 +535,7 @@ def main():
              pasta_aha = os.path.join(args.output_dir, "AHA")
              os.makedirs(pasta_aha, exist_ok=True)
 
-    # 1. Calcular Série Histórica Brasil
-    # Soma de todos os municípios mês a mês
-    prep_brasil_hist = EmPrEP_Serie_Historica_mun.sum()
-    vinc_brasil_hist = Vinculados_mun2.sum()
-    
-    # Calcular indicador Brasil
-    ind_brasil_hist = prep_brasil_hist.div(vinc_brasil_hist).replace([np.inf, -np.inf], np.nan).fillna(0).round(2)
+    # 1. (Já calculado acima: df_mes_br / Indicador_mes_BR)
     
     # 2. Identificar Códigos das Capitais Escolhidas
     # Lista de interesse
@@ -555,44 +554,63 @@ def main():
     rows_aha = []
     
     # Adicionar Capitais
-    for nome in cap_nomes:
-        uf_alvo = cap_uf_map.get(nome)
+    print("   Buscando capitais diretamente na série histórica (por nome)...")
+    
+    # Criar coluna normalizada em Indicador_mes_mun para facilitar a busca
+    if 'nome_mun' in Indicador_mes_mun.columns:
+        # Cria series temporária para busca segura
+        series_nomes_norm = Indicador_mes_mun['nome_mun'].astype(str).str.strip().str.lower()
         
-        # Tentar encontrar o código IBGE correto no DataFrame 'Indicador'
-        # Verifica se Sigla_UF existe, senão tenta UF_Res
-        if 'Sigla_UF' in Indicador.columns:
-            mask = (Indicador['Município'].str.lower() == nome.lower()) & (Indicador['Sigla_UF'].astype(str).str.upper() == uf_alvo)
-        else:
-            # Fallback se Sigla_UF não foi gerada corretamente (tenta usar o mapa fixo no UF_Res)
-            # Assume que UF_Res pode ser código, então converte
-            mask = (Indicador['Município'].str.lower() == nome.lower()) & (Indicador['UF_Res'].astype(str).map(MAP_UF_SIGLA).fillna(Indicador['UF_Res']).str.upper() == uf_alvo)
+        for nome in cap_nomes:
+            # Normalizar nome alvo
+            nome_alvo = nome.strip().lower()
             
-        match = Indicador[mask]
-        
-        if not match.empty:
-            cod_ibge = match.index[0] # Pega o primeiro match (código ibge)
+            # Buscar matches
+            matches = Indicador_mes_mun[series_nomes_norm == nome_alvo]
             
-            # Buscar a série histórica deste código em Indicador_mes_mun
-            # Indicador_mes_mun tem 'nome_mun' e as colunas de data. O index é o código IBGE (definido na linha 343)
-            if cod_ibge in Indicador_mes_mun.index:
-                # Selecionar linha, remover 'nome_mun' e renomear series para o Nome da Capital
-                row = Indicador_mes_mun.loc[cod_ibge].drop('nome_mun', errors='ignore')
+            if matches.empty:
+                print(f"      [ERRO] Capital '{nome}' não encontrada em 'Indicador_mes_mun' (coluna nome_mun).")
+            else:
+                # Se houver mais de um match (ex: homônimos), precisamos desambiguar
+                # Como Indicador_mes_mun não tem UF explícita fácil (só nome_mun), 
+                # vamos tentar cruzar de volta com Indicador para ver a UF se houver ambiguidade,
+                # ou assumir o primeiro se for capital conhecida única.
+                # Capitais geralmente são únicas ou muito maiores. Vamos pegar a com maior movimento se houver duplicata.
+                
+                if len(matches) > 1:
+                    print(f"      [AVISO] Múltiplos resultados para '{nome}'. Selecionando o com maior volume histórico.")
+                    # Soma todo o histórico para ver quem tem mais dados
+                    somas = matches.drop(columns=['nome_mun'], errors='ignore').sum(axis=1)
+                    idx_melhor = somas.idxmax()
+                    row = matches.loc[idx_melhor].drop('nome_mun', errors='ignore')
+                    ibge_code = idx_melhor
+                else:
+                    row = matches.iloc[0].drop('nome_mun', errors='ignore')
+                    ibge_code = matches.index[0]
+                
+                row['IBGE'] = ibge_code
                 row.name = nome
                 rows_aha.append(row)
-        else:
-            print(f"   Aviso: Capital não encontrada na base: {nome} ({uf_alvo})")
+                print(f"      OK: {nome} (via nome_mun) - IBGE {ibge_code}")
+                
+    else:
+        print("   [CRÍTICO] Coluna 'nome_mun' não existe em Indicador_mes_mun. Não é possível buscar capitais.")
 
-    # Adicionar Brasil
-    ind_brasil_hist.name = 'Brasil'
-    
-    # Garantir que as colunas do Brasil estejam na mesma ordem/set das capitais
-    # Pegar as colunas de meses do Indicador_mes_mun (que já foram ordenadas na linha 353)
-    cols_meses_finais = [c for c in Indicador_mes_mun.columns if c != 'nome_mun']
-    rows_aha.append(ind_brasil_hist[cols_meses_finais])
+    # Adicionar Brasil (Reutilizando df_mes_br calculado anteriormente)
+    # df_mes_br é um DataFrame. Vamos pegar a primeira linha como Series e adicionar IBGE
+    if not df_mes_br.empty:
+        row_brasil = df_mes_br.iloc[0].copy()
+        row_brasil['IBGE'] = '0'
+        row_brasil.name = 'Brasil'
+        rows_aha.append(row_brasil)
     
     # Criar DataFrame Final
     if rows_aha:
         df_aha = pd.DataFrame(rows_aha)
+        
+        # Mover IBGE para a primeira coluna
+        cols_final = ['IBGE'] + [c for c in df_aha.columns if c != 'IBGE']
+        df_aha = df_aha[cols_final]
         
         # Reordenar linhas conforme a lista solicitada + Brasil
         ordem_final = cap_nomes + ['Brasil']
@@ -609,6 +627,10 @@ def main():
             print(f"   Erro ao salvar arquivo AHA: {e}")
     else:
         print("   Erro: Nenhuma capital ou dados do Brasil foram processados para o arquivo AHA.")
+
+    # Tempo total
+    duration = time.time() - start_time
+    print(f"\n--- EXECUÇÃO CONCLUÍDA EM: {duration/60:.2f} minutos ({duration:.1f} segundos) ---")
 
 if __name__ == "__main__":
     main()
