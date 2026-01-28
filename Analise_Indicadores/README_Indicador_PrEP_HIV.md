@@ -4,7 +4,9 @@ Este diretório contém as ferramentas para geração e monitoramento do indicad
 
 ## 📂 Estrutura de Arquivos
 
-*   **`gerar_indicador_prep_otimizado.py`**: Script principal (versão otimizada) que realiza o cálculo do indicador.
+*   **`indicador_prep_hiv.py`**: Script principal (orquestrador) que realiza o cálculo do indicador e gera os relatórios.
+*   **`visualizacao.py`**: Módulo responsável pela geração de gráficos (Matplotlib) e testes estatísticos (Mann-Kendall).
+*   **`sociodemografico.py`**: Módulo para análises de recorte populacional (Raça/Cor, Faixa Etária, etc.).
 *   **`README.md`**: Este arquivo de documentação.
 
 ---
@@ -32,11 +34,11 @@ $$
 
 ## 🚀 Como Executar
 
-O script foi desenhado para rodar via linha de comando (CLI), lendo os arquivos `.parquet` diretamente da rede ou disco local mapeado.
+O script foi desenhado para rodar via linha de comando (CLI).
 
 ### Pré-requisitos
 *   Python 3.x instalado.
-*   Bibliotecas: `pandas`, `openpyxl`, `pyarrow`, `numpy`.
+*   Bibliotecas: `pandas`, `openpyxl`, `pyarrow`, `numpy`, `matplotlib`, `scikit-learn`, `pymannkendall`.
 *   Acesso aos drives de rede mapeados (`M:` e `V:`) ou caminhos configurados.
 
 ### Comando
@@ -44,39 +46,49 @@ O script foi desenhado para rodar via linha de comando (CLI), lendo os arquivos 
 Navegue até esta pasta e execute:
 
 ```bash
-python gerar_indicador_prep_otimizado.py --data_fechamento AAAA-MM-DD
+python indicador_prep_hiv.py --data_fechamento AAAA-MM-DD
 ```
 
 **Exemplo:**
 ```bash
-python gerar_indicador_prep_otimizado.py --data_fechamento 2025-12-31
+python indicador_prep_hiv.py --data_fechamento 2025-12-31
 ```
 
 O script irá:
-1.  Carregar as bases (`PrEP_unico.parquet`, `PrEP_dispensas.parquet`, `PVHA_prim_ult.parquet`).
-2.  Calcular os totais atuais por Município, Estado e Região.
-3.  Calcular a série histórica mensal.
-4.  Exibir uma conferência no terminal (Dados de Brasília e Totais Nacionais).
-5.  Salvar o arquivo Excel final.
+1.  Carregar as bases (`PrEP_unico`, `PrEP_dispensas`, `PVHA_prim_ult`).
+2.  Calcular indicadores atuais e séries históricas (Município, UF, Região, Brasil).
+3.  Gerar relatórios Excel detalhados.
+4.  Executar testes de tendência (Mann-Kendall) para identificar crescimento/queda.
+5.  Gerar gráficos de séries históricas e tendências lineares.
+6.  Realizar análise sociodemográfica (Raça/Cor).
 
 ---
 
-## 📤 Saída (Output)
+## out Saída (Output)
 
-O script gera um arquivo Excel (`Indicador_PrEP_MM_AAAA.xlsx`) salvo em `V:\2026\Monitoramento e Avaliação\DOCUMENTOS\PrEP\Indicador PrEP HIV` contendo as abas:
+Os arquivos são salvos em `V:\2026\Monitoramento e Avaliação\DOCUMENTOS\PrEP\Indicador PrEP HIV`.
 
-1.  **Geral:** Tabelas resumo (contagem de municípios por faixa do indicador).
-2.  **Município:** Lista completa de todos os municípios, população, nº em PrEP, nº Vinculados, valor do Indicador e Grupo.
-3.  **Município_50k:** Mesmo que o anterior, filtrado para municípios com >50k habitantes.
-4.  **UF:** Agregado por Unidade Federativa.
-5.  **Região:** Agregado por Região (Ordem: Norte, Nordeste, Sudeste, Sul, Centro-Oeste).
-6.  **Nacional:** Totais Brasil.
-7.  **Mensal_municipio:** Histórico mês a mês do indicador para cada município (Jan/2022 até data atual).
+### 1. Relatório Geral (`Indicador_PrEP_MM_AAAA.xlsx`)
+*   **Geral:** Tabelas resumo.
+*   **Município / UF / Região / Nacional:** Dados detalhados.
+*   **Mensal_municipio / Mensal_BR:** Histórico mês a mês.
+*   **Mann_Kendall:** Resultados estatísticos de tendência.
+*   **Raca_Cor:** Indicador atual segmentado por autodeclaração de raça.
+
+### 2. Relatório AHA (`AHA\Indicador_PrEP_AHA_...xlsx`)
+*   Focado nas capitais selecionadas (Campo Grande, Curitiba, Florianópolis, Fortaleza, Porto Alegre) + Brasil.
+*   Inclui gráficos específicos e teste de tendência.
+
+### 3. Gráficos (`Graficos\`)
+*   Séries históricas comparativas.
+*   Linhas de tendência (últimos 12 ou 18 meses).
+*   Gráficos sociodemográficos.
 
 ---
 
 ## 🛠️ Manutenção
 
+*   **Ordem das Regiões:** Fixada no código como `['Norte', 'Nordeste', 'Sudeste', 'Sul', 'Centro-Oeste']`.
 *   **Classificação de Grupos:**
     *   *Sem novos vinculados e sem PrEP*
     *   *Sem novos vinculados, com pessoas em PrEP*
