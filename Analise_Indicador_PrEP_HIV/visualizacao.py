@@ -264,13 +264,55 @@ def gerar_analise_aha(graf, output_folder):
     try:
         plt.figure(figsize=(12, 8)) 
         i = len(graf) - 1
+        
         for grupo in graf.index:
             dados = graf.loc[grupo]
-            plt.plot(x_numeric, dados.values, label=str(grupo), color=cores[i % len(cores)], linewidth=2)
-            i = i - 1
+            label_nome = str(grupo)
+            
+            # Estilo customizado para Brasil
+            if label_nome == 'Brasil':
+                cor = 'black'
+                estilo = '--'
+                largura = 3.0
+                z_order = 10
+            else:
+                cor = cores[i % len(cores)]
+                estilo = '-'
+                largura = 2.0
+                z_order = 5
+                i = i - 1 # Só decrementa cor para capitais
+            
+            plt.plot(x_numeric, dados.values, label=label_nome, color=cor, 
+                     linestyle=estilo, linewidth=largura, zorder=z_order)
+            
+            # Marcadores e Rótulos (Início e Fim)
+            indices_pontos = [0, len(dados) - 1]
+            for idx in indices_pontos:
+                val = dados.values[idx]
+                # Scatter no ponto
+                plt.scatter(x_numeric[idx], val, color=cor, zorder=z_order+1, s=30)
+                
+                # Texto do valor
+                # Ajuste fino: Se for Brasil, negrito e maior
+                weight = 'bold' if label_nome == 'Brasil' else 'normal'
+                fontsize = 10 if label_nome == 'Brasil' else 9
+                
+                plt.text(x_numeric[idx], val + 0.05, f"{val:.2f}".replace('.', ','), 
+                         color=cor, fontsize=fontsize, fontweight=weight, ha='center', va='bottom')
+
+        # Formatar datas do eixo X
+        def formatar_data(data_str):
+            try:
+                m, y = str(data_str).split('_')
+                if m == '1': return f"jan/{y}"
+                elif m == '7': return f"jul/{y}"
+                else: return f"{m}/{y}"
+            except: return str(data_str)
+
+        x_labels_fmt = [formatar_data(d) for d in x_labels]
 
         _configurar_plot()
-        plt.xticks(x_numeric[::6], [x_labels[idx] for idx in x_numeric[::6]], rotation=45)
+        plt.xticks(x_numeric[::6], [x_labels_fmt[idx] for idx in x_numeric[::6]], rotation=45)
         plt.legend(bbox_to_anchor=(1.01, 1), loc='upper left', fancybox=True)
         plt.title('Série Histórica - AHA (Capitais Selecionadas + Brasil)')
         plt.tight_layout()
